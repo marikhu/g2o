@@ -159,7 +159,6 @@ int main(int argc, const char* argv[]) {
     v_se3->setEstimate(pose);
     optimizer.addVertex(v_se3);
     true_poses.push_back(pose);
-    cout << "i: " << i << ": " << pose << endl;
     vertex_id++;
   }
   int point_id = vertex_id;
@@ -272,16 +271,4 @@ int main(int argc, const char* argv[]) {
   cout << "Point error after optimisation (inliers only): "
        << sqrt(sum_diff2 / inliers.size()) << endl;
   cout << endl;
-
-  for(int i = 0; i < 15; i++)
-  {
-	   g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
-	   if (v_it == optimizer.vertices().end()) {
-               cerr << "Vertex " << i << " not in graph!" << endl;
-               exit(-1);
-           } 
-
-	   g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
-	  cout << v_pose->estimate() << endl;
-  }
 }
