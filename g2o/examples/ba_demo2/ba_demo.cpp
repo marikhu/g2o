@@ -193,9 +193,10 @@ int main(int argc, const char* argv[]) {
   DataReader *pDataReader = new DataReader();
   vector<vector<tsPolygon>> vvPolygonsInFlow;
   bool bDebug = true;
+  int iNumPolygonsToConsider = 0;
   pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, bDebug);
   vector<Vector3d> true_points;
-  int iNumPolygonsToConsider = 3;
+  if(iNumPolygonsToConsider == 0) iNumPolygonsToConsider = vvPolygonsInFlow[0].size();
   pDataReader->getTruePoints(vvPolygonsInFlow[0], iNumPolygonsToConsider, true_points, bDebug);
   cout << "# true_points: " << true_points.size() << endl;
 
@@ -204,24 +205,6 @@ int main(int argc, const char* argv[]) {
   pDataReader->setFileIntrinsics(YML_INTRINSICS, matK, matD, bDebug);
 
   /////////////////////////////////////////////////////////////////////////////                                                                  
-
-  // // Config
-  // int iNumPts = 30;
-  int iNumPoses = 5;
-
-  // cout << "true_points:" << endl;
-  // for (size_t i = 0; i < iNumPts; ++i) {
-  //   true_points.push_back(
-  //       Vector3d((g2o::Sampler::uniformRand(0., 1.) - 0.5) * 3,
-  //               g2o::Sampler::uniformRand(0., 1.) - 0.5,
-  //               g2o::Sampler::uniformRand(0., 1.) + 3));
-  //   cout << i << ": " << true_points[i][0] << ", " << true_points[i][1] << ", " << true_points[i][2] << endl;
-  //   //cout << true_points[i] << endl;
-  // }
-
-  // Camera matrix K
-  // double focal_length = 1000.;
-  // Vector2d principal_point(320., 240.);
 
   double focal_length = matK.at<double>(0,0);
   double cx = matK.at<double>(0,2);
@@ -288,27 +271,7 @@ int main(int argc, const char* argv[]) {
   }
 
   cout << "# true poses: " << true_poses.size() << endl;
-
-  // int vertex_id = 0;
-  // for (size_t i = 0; i < iNumPoses; ++i) {
-  //   Vector3d trans(i * 0.04 - 1., 0, 0);
-  //   //cout << endl << "trans " << i << ": " << endl << trans << endl;
-
-  //   Eigen::Quaterniond q;
-  //   q.setIdentity();
-  //   cout << q.x() << " " << q.y() << " " << q.z() << endl;
-  //   g2o::SE3Quat pose(q, trans);
-  //   cout << "pose " << i << ": " << endl << pose << endl;
-  //   g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
-  //   v_se3->setId(vertex_id);
-  //   if (i < 2) {
-  //     v_se3->setFixed(true);
-  //   }
-  //   v_se3->setEstimate(pose);
-  //   optimizer.addVertex(v_se3);
-  //   true_poses.push_back(pose);
-  //   vertex_id++;
-  // }
+ 
   int point_id = vertex_id;
   int point_num = 0;
   double sum_diff2 = 0;
@@ -443,7 +406,7 @@ int main(int argc, const char* argv[]) {
   cout << endl;
   //////////////////////////////////////////////////////////////
 
-  for(int i = 0; i < iNumPoses; i++)
+  for(int i = 0; i < (int)true_poses.size(); i++)
   {
     g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
     if (v_it == optimizer.vertices().end()) {
