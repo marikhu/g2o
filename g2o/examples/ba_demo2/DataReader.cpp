@@ -19,9 +19,7 @@ void DataReader::setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPol
 
     _fs.open(sFile, FileStorage::READ);
     if (!_fs.isOpened())
-    {
         cerr << "Unable to read: " << sFile << endl;
-    }
 
     string sNode = "frameNo";
     FileNode fn = _fs[sNode];
@@ -189,3 +187,86 @@ void DataReader::setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPol
     if (matImg.data)
         matImg.release();    
 }
+
+
+void DataReader::setFileExtrinsics(string sFile, Mat &matP, Mat &matHgToI, Mat &matHiToG, bool bDebug)
+{
+    _fs.open(sFile, FileStorage::READ);
+    if (!_fs.isOpened())
+    {
+        cerr << "Unable to read: " << sFile << endl;
+        return;
+    }
+
+    string sNode = "matP";
+    FileNode fn = _fs[sNode];
+    checkNode(fn, sNode);
+    fn >> matP;
+
+    sNode = "matHgToI";
+    fn = _fs[sNode];
+    checkNode(fn, sNode);
+    fn >> matHgToI;
+
+    sNode = "matHiToG";
+    fn = _fs[sNode];
+    checkNode(fn, sNode);
+    fn >> matHiToG;
+
+    if(_fs.isOpened()) _fs.release();
+}
+
+void DataReader::setFileIntrinsics(string sFile, Mat &matK, Mat &matD, bool bDebug)
+{
+    _fs.open(sFile, FileStorage::READ);
+    if (!_fs.isOpened())
+    {
+        cerr << "Unable to read: " << sFile << endl;
+        return;
+    }
+
+    string sNode = "camera_matrix";
+    FileNode fn = _fs[sNode];
+    checkNode(fn, sNode);
+    fn >> matK;
+
+    sNode = "distortion_coefficients";
+    fn = _fs[sNode];
+    checkNode(fn, sNode);
+    fn >> matD;
+
+    if(_fs.isOpened()) _fs.release();
+}
+
+// Given polygons in flow, get the 3D world points
+void DataReader::getTruePoints(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Vector3d> &true_points, bool bDebug)
+{
+    true_points.clear();
+    int iNumPolygons = (int)vPolygonsInFlow.size();
+    for(int iPolygonIdx = 0; iPolygonIdx < iNumPolygons; iPolygonIdx++)
+    {
+        if(iPolygonIdx >= iNumPolygonsToConsider) break;
+        tsPolygon polygon = vPolygonsInFlow[iPolygonIdx];
+        int iNumPts = (int)polygon.vPtsW.size();
+        for(int iPtIdx = 0; iPtIdx < iNumPts; iPtIdx++)
+        {
+            Point3d pt = polygon.vPtsW[iPtIdx];
+            true_points.push_back(Vector3d(pt.x, pt.y, pt.z));
+        }
+    }
+}
+
+// Given polygons in flow, get the 3D world points
+void DataReader::getTrfs(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Mat> &vMatTrfs, bool bDebug)
+{
+    vMatTrfs.clear();
+    int iNumPolygons = (int)vPolygonsInFlow.size();
+    for(int iPolygonIdx = 0; iPolygonIdx < iNumPolygons; iPolygonIdx++)
+    {
+        if(iPolygonIdx >= iNumPolygonsToConsider) break;
+        tsPolygon polygon = vPolygonsInFlow[iPolygonIdx];
+        Mat matT = polygon.trf.matT;
+        vMatTrfs.push_back(matT); // NOTE: First matrix is zero matrix, not to be used.
+    }
+}
+

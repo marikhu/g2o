@@ -38,6 +38,14 @@
 
 #include "DataReader.h"
 
+#include <cv.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+using namespace cv;
+
+
+
 #if defined G2O_HAVE_CHOLMOD
 G2O_USE_OPTIMIZATION_LIBRARY(cholmod);
 #else
@@ -55,6 +63,39 @@ public:
     return static_cast<int>(g2o::Sampler::uniformRand(from, to));
   }
 };
+
+// https://gist.github.com/shubh-agrawal/76754b9bfb0f4143819dbd146d15d4c8
+void getQuaternion(Mat R, double Q[])
+{
+    double trace = R.at<double>(0,0) + R.at<double>(1,1) + R.at<double>(2,2);
+ 
+    if (trace > 0.0) 
+    {
+        double s = sqrt(trace + 1.0);
+        Q[3] = (s * 0.5);
+        s = 0.5 / s;
+        Q[0] = ((R.at<double>(2,1) - R.at<double>(1,2)) * s);
+        Q[1] = ((R.at<double>(0,2) - R.at<double>(2,0)) * s);
+        Q[2] = ((R.at<double>(1,0) - R.at<double>(0,1)) * s);
+    } 
+    
+    else 
+    {
+        int i = R.at<double>(0,0) < R.at<double>(1,1) ? (R.at<double>(1,1) < R.at<double>(2,2) ? 2 : 1) : (R.at<double>(0,0) < R.at<double>(2,2) ? 2 : 0); 
+        int j = (i + 1) % 3;  
+        int k = (i + 2) % 3;
+
+        double s = sqrt(R.at<double>(i, i) - R.at<double>(j,j) - R.at<double>(k,k) + 1.0);
+        Q[i] = s * 0.5;
+        s = 0.5 / s;
+
+        Q[3] = (R.at<double>(k,j) - R.at<double>(j,k)) * s;
+        Q[j] = (R.at<double>(j,i) + R.at<double>(i,j)) * s;
+        Q[k] = (R.at<double>(k,i) + R.at<double>(i,k)) * s;
+    }
+
+    cout << "Q: " << Q[0] << " " << Q[1] << " " << Q[2] << " " << Q[3] << endl;
+}
 
 int main(int argc, const char* argv[]) {
   if (argc < 2) {
@@ -125,33 +166,49 @@ int main(int argc, const char* argv[]) {
   optimizer.setAlgorithm(
       g2o::OptimizationAlgorithmFactory::instance()->construct(solverName,
                                                               solverProperty));
+
+  /////////////////////////////////////////////////////////////////////////////                                                                  
+  
   // Load data
   DataReader *pDataReader = new DataReader();
   vector<vector<tsPolygon>> vvPolygonsInFlow;
   bool bDebug = true;
   pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, bDebug);
+  vector<Vector3d> true_points;
+  int iNumPolygonsToConsider = 3;
+  pDataReader->getTruePoints(vvPolygonsInFlow[0], iNumPolygonsToConsider, true_points, bDebug);
+  cout << "# true_points: " << true_points.size() << endl;
 
+  Mat matP, matHiToG, matHgToI, matK, matD;
+  pDataReader->setFileExtrinsics(YML_EXTRNSICS, matP, matHgToI, matHiToG, bDebug);
+  pDataReader->setFileIntrinsics(YML_INTRINSICS, matK, matD, bDebug);
 
-  // Config
-  int iNumPts = 30;
+  /////////////////////////////////////////////////////////////////////////////                                                                  
+
+  // // Config
+  // int iNumPts = 30;
   int iNumPoses = 5;
 
-  vector<Vector3d> true_points;
-  cout << "true_points:" << endl;
-  for (size_t i = 0; i < iNumPts; ++i) {
-    true_points.push_back(
-        Vector3d((g2o::Sampler::uniformRand(0., 1.) - 0.5) * 3,
-                g2o::Sampler::uniformRand(0., 1.) - 0.5,
-                g2o::Sampler::uniformRand(0., 1.) + 3));
-    cout << i << ": " << true_points[i][0] << ", " << true_points[i][1] << ", " << true_points[i][2] << endl;
-    //cout << true_points[i] << endl;
-  }
+  // cout << "true_points:" << endl;
+  // for (size_t i = 0; i < iNumPts; ++i) {
+  //   true_points.push_back(
+  //       Vector3d((g2o::Sampler::uniformRand(0., 1.) - 0.5) * 3,
+  //               g2o::Sampler::uniformRand(0., 1.) - 0.5,
+  //               g2o::Sampler::uniformRand(0., 1.) + 3));
+  //   cout << i << ": " << true_points[i][0] << ", " << true_points[i][1] << ", " << true_points[i][2] << endl;
+  //   //cout << true_points[i] << endl;
+  // }
 
   // Camera matrix K
-  double focal_length = 1000.;
-  Vector2d principal_point(320., 240.);
+  // double focal_length = 1000.;
+  // Vector2d principal_point(320., 240.);
 
-  vector<g2o::SE3Quat, aligned_allocator<g2o::SE3Quat> > true_poses;
+  double focal_length = matK.at<double>(0,0);
+  double cx = matK.at<double>(0,2);
+  double cy = matK.at<double>(1,2);
+  Vector2d principal_point(cx, cy);
+  cout <<"focal_length: " << focal_length << ", cx: " << cx << ", cy: " << cy << endl;
+
   g2o::CameraParameters* cam_params =
       new g2o::CameraParameters(focal_length, principal_point, 0.);
   cam_params->setId(0);
@@ -160,6 +217,32 @@ int main(int argc, const char* argv[]) {
     assert(false);
   }
 
+  // Get the camera pose ^C T _W -- Transformation of the World wrt Camera
+  Mat matKinv = matK.inv();
+  Mat matRt = matKinv * matP;   // Trf of World wrt Cam
+  Mat matR(3,3,CV_64FC1);
+  Mat matt(3,1,CV_64FC1);
+  matRt(Rect(0,0,3,3)).copyTo(matR);
+  matRt(Rect(3,0,1,3)).copyTo(matt);
+  cout << "matRt: " << matRt << endl << "matR: " << matR << endl << "matt: " << matt << endl;
+  // Mat matEulerAngles;
+  // cv::Rodrigues(matR, matEulerAngles);
+
+  double Q[4];
+  getQuaternion(matR, Q);
+  Eigen::Quaterniond q0(Q[3],Q[0],Q[1],Q[2]); // w, x, y, z
+  cout << "q0: " << q0.x() << " " << q0.y() << " " << q0.z() << " " << q0.w() << endl;
+  Vector3d trans0(matt.at<double>(0), matt.at<double>(1), matt.at<double>(2));
+  cout << "trans0: " << trans0 << endl;
+  g2o::SE3Quat pose0(q0, trans0);
+  cout << "pose0: " << pose0 << endl;
+
+  vector<Mat> vMatTrfs;
+  pDataReader->getTrfs(vvPolygonsInFlow[0], iNumPolygonsToConsider, vMatTrfs, bDebug);
+
+
+
+  vector<g2o::SE3Quat, aligned_allocator<g2o::SE3Quat> > true_poses;
   int vertex_id = 0;
   for (size_t i = 0; i < iNumPoses; ++i) {
     Vector3d trans(i * 0.04 - 1., 0, 0);
@@ -167,7 +250,9 @@ int main(int argc, const char* argv[]) {
 
     Eigen::Quaterniond q;
     q.setIdentity();
+    cout << q.x() << " " << q.y() << " " << q.z() << endl;
     g2o::SE3Quat pose(q, trans);
+    cout << "pose " << i << ": " << endl << pose << endl;
     g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
     v_se3->setId(vertex_id);
     if (i < 2) {
@@ -176,7 +261,6 @@ int main(int argc, const char* argv[]) {
     v_se3->setEstimate(pose);
     optimizer.addVertex(v_se3);
     true_poses.push_back(pose);
-    cout << "pose " << i << ": " << endl << pose << endl;
     vertex_id++;
   }
   int point_id = vertex_id;
