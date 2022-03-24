@@ -97,6 +97,26 @@ void getQuaternion(Mat R, double Q[])
     cout << "Q: " << Q[0] << " " << Q[1] << " " << Q[2] << " " << Q[3] << endl;
 }
 
+void getPoseFromTrfMat(Mat matTrf, g2o::SE3Quat &pose, bool bDebug = false )
+{
+  Mat matR(3,3,CV_64FC1);
+  Mat matt(3,1,CV_64FC1);
+  matTrf(Rect(0,0,3,3)).copyTo(matR);
+  matTrf(Rect(3,0,1,3)).copyTo(matt);
+  cout << "matTrf: " << matTrf << endl << "matR: " << matR << endl << "matt: " << matt << endl;
+  // Mat matEulerAngles;
+  // cv::Rodrigues(matR, matEulerAngles);
+
+  double Q[4];
+  getQuaternion(matR, Q);
+  Eigen::Quaterniond q(Q[3],Q[0],Q[1],Q[2]); // w, x, y, z
+  cout << "q: " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << endl;
+  Vector3d trans(matt.at<double>(0), matt.at<double>(1), matt.at<double>(2));
+  cout << "trans: " << trans << endl;
+  pose = g2o::SE3Quat(q, trans);
+  cout << "pose from getPoseFromTrfMat(): " << pose << endl;
+}
+
 int main(int argc, const char* argv[]) {
   if (argc < 2) {
     cout << endl;
@@ -236,6 +256,10 @@ int main(int argc, const char* argv[]) {
   cout << "trans0: " << trans0 << endl;
   g2o::SE3Quat pose0(q0, trans0);
   cout << "pose0: " << pose0 << endl;
+
+  g2o::SE3Quat pose2;
+  getPoseFromTrfMat(matRt, pose2);
+  
 
   vector<Mat> vMatTrfs;
   pDataReader->getTrfs(vvPolygonsInFlow[0], iNumPolygonsToConsider, vMatTrfs, bDebug);
