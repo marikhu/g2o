@@ -240,53 +240,75 @@ int main(int argc, const char* argv[]) {
   // Get the camera pose ^C T _W -- Transformation of the World wrt Camera
   Mat matKinv = matK.inv();
   Mat matRt = matKinv * matP;   // Trf of World wrt Cam
-  Mat matR(3,3,CV_64FC1);
-  Mat matt(3,1,CV_64FC1);
-  matRt(Rect(0,0,3,3)).copyTo(matR);
-  matRt(Rect(3,0,1,3)).copyTo(matt);
-  cout << "matRt: " << matRt << endl << "matR: " << matR << endl << "matt: " << matt << endl;
-  // Mat matEulerAngles;
-  // cv::Rodrigues(matR, matEulerAngles);
+  g2o::SE3Quat pose0;
+  getPoseFromTrfMat(matRt, pose0);
 
-  double Q[4];
-  getQuaternion(matR, Q);
-  Eigen::Quaterniond q0(Q[3],Q[0],Q[1],Q[2]); // w, x, y, z
-  cout << "q0: " << q0.x() << " " << q0.y() << " " << q0.z() << " " << q0.w() << endl;
-  Vector3d trans0(matt.at<double>(0), matt.at<double>(1), matt.at<double>(2));
-  cout << "trans0: " << trans0 << endl;
-  g2o::SE3Quat pose0(q0, trans0);
-  cout << "pose0: " << pose0 << endl;
-
-  g2o::SE3Quat pose2;
-  getPoseFromTrfMat(matRt, pose2);
-  
-
-  vector<Mat> vMatTrfs;
-  pDataReader->getTrfs(vvPolygonsInFlow[0], iNumPolygonsToConsider, vMatTrfs, bDebug);
-
-
-
+  // Add pose to vertex
   vector<g2o::SE3Quat, aligned_allocator<g2o::SE3Quat> > true_poses;
   int vertex_id = 0;
-  for (size_t i = 0; i < iNumPoses; ++i) {
-    Vector3d trans(i * 0.04 - 1., 0, 0);
-    //cout << endl << "trans " << i << ": " << endl << trans << endl;
+  g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
+  v_se3->setId(vertex_id);
+  v_se3->setFixed(true);
+  v_se3->setEstimate(pose0);
+  optimizer.addVertex(v_se3);
+  true_poses.push_back(pose0);
+  vertex_id++;
+  
+  vector<Mat> vMatTrfs;
+  pDataReader->getTrfs(vvPolygonsInFlow[0], iNumPolygonsToConsider, vMatTrfs, bDebug);
+  // P0_C = T_WwrtC * P1_W                    -- pose for P1_W
+  // P2_W = T_WwrtW * P1_W
+  // P1_W = (T_WwrtW)^-1 * P2_W
+  // P0_C = T_wrtC * (T_WwrtW)^-1 * P2_W      -- pose for P2_W
+  Mat newTrfForPose = Mat::zeros(4,4,CV_64FC1);
+  matRt.copyTo(newTrfForPose(Rect(0,0,4,3)));
+  newTrfForPose.at<double>(3,3) = 1;
+  cout << "newTrfForPose: " << newTrfForPose << endl;
 
-    Eigen::Quaterniond q;
-    q.setIdentity();
-    cout << q.x() << " " << q.y() << " " << q.z() << endl;
-    g2o::SE3Quat pose(q, trans);
-    cout << "pose " << i << ": " << endl << pose << endl;
-    g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
-    v_se3->setId(vertex_id);
-    if (i < 2) {
-      v_se3->setFixed(true);
-    }
-    v_se3->setEstimate(pose);
-    optimizer.addVertex(v_se3);
-    true_poses.push_back(pose);
-    vertex_id++;
+  for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
+  {
+      Mat matTrf = vMatTrfs[iTrfIdx];
+      // Now, we need Trf of World wrt Cam
+      Mat matTrfInv = matTrf.inv();
+      cout << "matTrf: " << matTrf << endl;
+      newTrfForPose = newTrfForPose * matTrf;
+      cout << "newTrfForPose: " << newTrfForPose << endl;
+      g2o::SE3Quat pose;
+      getPoseFromTrfMat(newTrfForPose, pose);
+      g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
+      v_se3->setId(vertex_id);
+      if(iTrfIdx < 2)
+      {
+        v_se3->setFixed(true); //-- In example, pose0 and pose1 set as fixed
+      }
+      v_se3->setEstimate(pose);
+      optimizer.addVertex(v_se3);
+      true_poses.push_back(pose);
+      vertex_id++;
   }
+
+  cout << "# true poses: " << true_poses.size() << endl;
+
+  // int vertex_id = 0;
+  // for (size_t i = 0; i < iNumPoses; ++i) {
+  //   Vector3d trans(i * 0.04 - 1., 0, 0);
+  //   //cout << endl << "trans " << i << ": " << endl << trans << endl;
+
+  //   Eigen::Quaterniond q;
+  //   q.setIdentity();
+  //   cout << q.x() << " " << q.y() << " " << q.z() << endl;
+  //   g2o::SE3Quat pose(q, trans);
+  //   cout << "pose " << i << ": " << endl << pose << endl;
+  //   g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
+  //   v_se3->setId(vertex_id);
+  //   if (i < 2) {
+  //     v_se3->setFixed(true);
+  //   }
+  //   v_se3->setEstimate(pose);
+  //   optimizer.addVertex(v_se3);
+  //   true_poses.push_back(pose);
+  //   vertex_id++;
+  // }
   int point_id = vertex_id;
   int point_num = 0;
   double sum_diff2 = 0;
@@ -306,7 +328,7 @@ int main(int argc, const char* argv[]) {
     int num_obs = 0;
     for (size_t j = 0; j < true_poses.size(); ++j) {
       Vector2d z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
-      if(i==0 && j <3)
+      if(i<2 && j <3)
       {
           cout << "projection is " << endl 
                 << z << endl 
@@ -315,7 +337,7 @@ int main(int argc, const char* argv[]) {
                 << " going through trf (index " << j << ") " << endl 
                 << true_poses.at(j) << endl;
       }
-      if (z[0] >= 0 && z[1] >= 0 && z[0] < 640 && z[1] < 480) {
+      if (z[0] >= 0 && z[1] >= 0 && z[0] < 1920 && z[1] < 1080) {
         ++num_obs;
       }
     }
@@ -326,10 +348,10 @@ int main(int argc, const char* argv[]) {
         Vector2d z =
             cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
 
-        if (z[0] >= 0 && z[1] >= 0 && z[0] < 640 && z[1] < 480) {
+        if (z[0] >= 0 && z[1] >= 0 && z[0] < 1920 && z[1] < 1080) {
           double sam = g2o::Sampler::uniformRand(0., 1.);
           if (sam < OUTLIER_RATIO) {
-            z = Vector2d(Sample::uniform(0, 640), Sample::uniform(0, 480));
+            z = Vector2d(Sample::uniform(0, 1920), Sample::uniform(0, 1080));
             inlier = false;
           }
           z += Vector2d(g2o::Sampler::gaussRand(0., PIXEL_NOISE),
@@ -360,6 +382,15 @@ int main(int argc, const char* argv[]) {
       ++point_num;
     }
   }
+
+  // Display pointid_2_true_id
+  int iMapIdx = 0;
+  for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
+      it != pointid_2_trueid.end(); ++it) {
+    cout << "iMapIdx " << iMapIdx++ << " it->first " <<  it->first << ", it->second " << it->second << endl;   
+  }
+
+
   cout << endl;
   optimizer.initializeOptimization();
   optimizer.setVerbose(true);
