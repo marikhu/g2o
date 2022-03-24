@@ -36,6 +36,8 @@
 #include "g2o/stuff/sampler.h"
 #include "g2o/types/sba/types_six_dof_expmap.h"
 
+#include "DataReader.h"
+
 #if defined G2O_HAVE_CHOLMOD
 G2O_USE_OPTIMIZATION_LIBRARY(cholmod);
 #else
@@ -48,7 +50,7 @@ using namespace Eigen;
 using namespace std;
 
 class Sample {
- public:
+public:
   static int uniform(int from, int to) {
     return static_cast<int>(g2o::Sampler::uniformRand(from, to));
   }
@@ -60,21 +62,21 @@ int main(int argc, const char* argv[]) {
     cout << "Please type: " << endl;
     cout << "ba_demo [PIXEL_NOISE] [OUTLIER RATIO] [ROBUST_KERNEL] "
             "[STRUCTURE_ONLY] [DENSE]"
-         << endl;
+        << endl;
     cout << endl;
     cout << "PIXEL_NOISE: noise in image space (E.g.: 1)" << endl;
     cout << "OUTLIER_RATIO: probability of spuroius observation  (default: 0.0)"
-         << endl;
+        << endl;
     cout << "ROBUST_KERNEL: use robust kernel (0 or 1; default: 0==false)"
-         << endl;
+        << endl;
     cout << "STRUCTURE_ONLY: performe structure-only BA to get better point "
             "initializations (0 or 1; default: 0==false)"
-         << endl;
+        << endl;
     cout << "DENSE: Use dense solver (0 or 1; default: 0==false)" << endl;
     cout << endl;
     cout << "Note, if OUTLIER_RATIO is above 0, ROBUST_KERNEL should be set to "
             "1==true."
-         << endl;
+        << endl;
     cout << endl;
     exit(0);
   }
@@ -122,7 +124,13 @@ int main(int argc, const char* argv[]) {
   g2o::OptimizationAlgorithmProperty solverProperty;
   optimizer.setAlgorithm(
       g2o::OptimizationAlgorithmFactory::instance()->construct(solverName,
-                                                               solverProperty));
+                                                              solverProperty));
+  // Load data
+  DataReader *pDataReader = new DataReader();
+  vector<vector<tsPolygon>> vvPolygonsInFlow;
+  bool bDebug = true;
+  pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, bDebug);
+
 
   // Config
   int iNumPts = 30;
@@ -133,8 +141,8 @@ int main(int argc, const char* argv[]) {
   for (size_t i = 0; i < iNumPts; ++i) {
     true_points.push_back(
         Vector3d((g2o::Sampler::uniformRand(0., 1.) - 0.5) * 3,
-                 g2o::Sampler::uniformRand(0., 1.) - 0.5,
-                 g2o::Sampler::uniformRand(0., 1.) + 3));
+                g2o::Sampler::uniformRand(0., 1.) - 0.5,
+                g2o::Sampler::uniformRand(0., 1.) + 3));
     cout << i << ": " << true_points[i][0] << ", " << true_points[i][1] << ", " << true_points[i][2] << endl;
     //cout << true_points[i] << endl;
   }
@@ -184,7 +192,7 @@ int main(int argc, const char* argv[]) {
     v_p->setId(point_id);
     v_p->setMarginalized(true);
     v_p->setEstimate(true_points.at(i) +
-                     Vector3d(g2o::Sampler::gaussRand(0., 1),
+                    Vector3d(g2o::Sampler::gaussRand(0., 1),
                               g2o::Sampler::gaussRand(0., 1),
                               g2o::Sampler::gaussRand(0., 1)));
     int num_obs = 0;
@@ -252,8 +260,8 @@ int main(int argc, const char* argv[]) {
     cout << "Performing structure-only BA:" << endl;
     g2o::OptimizableGraph::VertexContainer points;
     for (g2o::OptimizableGraph::VertexIDMap::const_iterator it =
-             optimizer.vertices().begin();
-         it != optimizer.vertices().end(); ++it) {
+            optimizer.vertices().begin();
+        it != optimizer.vertices().end(); ++it) {
       g2o::OptimizableGraph::Vertex* v =
           static_cast<g2o::OptimizableGraph::Vertex*>(it->second);
       if (v->dimension() == 3) points.push_back(v);
@@ -269,11 +277,11 @@ int main(int argc, const char* argv[]) {
   optimizer.optimize(10);
   cout << endl;
   cout << "Point error before optimisation (inliers only): "
-       << sqrt(sum_diff2 / inliers.size()) << endl;
+      << sqrt(sum_diff2 / inliers.size()) << endl;
   point_num = 0;
   sum_diff2 = 0;
   for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
-       it != pointid_2_trueid.end(); ++it) {
+      it != pointid_2_trueid.end(); ++it) {
     g2o::HyperGraph::VertexIDMap::iterator v_it =
         optimizer.vertices().find(it->first);
     if (v_it == optimizer.vertices().end()) {
@@ -291,20 +299,20 @@ int main(int argc, const char* argv[]) {
     ++point_num;
   }
   cout << "Point error after optimisation (inliers only): "
-       << sqrt(sum_diff2 / inliers.size()) << endl;
+      << sqrt(sum_diff2 / inliers.size()) << endl;
   cout << "///////////////////////////////////" << endl;
   cout << endl;
   //////////////////////////////////////////////////////////////
 
   for(int i = 0; i < iNumPoses; i++)
   {
-	   g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
-	   if (v_it == optimizer.vertices().end()) {
-               cerr << "Vertex " << i << " not in graph!" << endl;
-               exit(-1);
-           } 
+    g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
+    if (v_it == optimizer.vertices().end()) {
+              cerr << "Vertex " << i << " not in graph!" << endl;
+              exit(-1);
+          } 
 
-	   g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
-	  cout << v_pose->estimate() << endl;
+    g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
+    cout << v_pose->estimate() << endl;
   }
 }
