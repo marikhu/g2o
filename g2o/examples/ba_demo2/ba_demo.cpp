@@ -65,7 +65,7 @@ public:
 };
 
 // https://gist.github.com/shubh-agrawal/76754b9bfb0f4143819dbd146d15d4c8
-void getQuaternion(Mat R, double Q[])
+void getQuaternion(Mat R, double Q[], bool bDebug = false)
 {
     double trace = R.at<double>(0,0) + R.at<double>(1,1) + R.at<double>(2,2);
  
@@ -94,28 +94,45 @@ void getQuaternion(Mat R, double Q[])
         Q[k] = (R.at<double>(k,i) + R.at<double>(i,k)) * s;
     }
 
-    cout << "Q: " << Q[0] << " " << Q[1] << " " << Q[2] << " " << Q[3] << endl;
+    Mat matEulerAngles;
+    cv::Rodrigues(R, matEulerAngles);
+    if(bDebug)
+    {
+      cout << "R: " << R << endl;
+      cout << "matEulerAngles: " << matEulerAngles << endl;
+      cout << "Q: " << Q[0] << " " << Q[1] << " " << Q[2] << " " << Q[3] << endl;
+    }
 }
 
-void getPoseFromTrfMat(Mat matTrf, g2o::SE3Quat &pose, bool bDebug = false )
+void getPoseFromTrfMat(Mat matTrf, g2o::SE3Quat &pose, bool bDebug = false)
 {
   Mat matR(3,3,CV_64FC1);
   Mat matt(3,1,CV_64FC1);
   matTrf(Rect(0,0,3,3)).copyTo(matR);
   matTrf(Rect(3,0,1,3)).copyTo(matt);
-  cout << "matTrf: " << matTrf << endl << "matR: " << matR << endl << "matt: " << matt << endl;
   // Mat matEulerAngles;
   // cv::Rodrigues(matR, matEulerAngles);
 
   double Q[4];
   getQuaternion(matR, Q);
   Eigen::Quaterniond q(Q[3],Q[0],Q[1],Q[2]); // w, x, y, z
-  cout << "q: " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << endl;
+  
   Vector3d trans(matt.at<double>(0), matt.at<double>(1), matt.at<double>(2));
-  cout << "trans: " << trans << endl;
   pose = g2o::SE3Quat(q, trans);
-  cout << "pose from getPoseFromTrfMat(): " << pose << endl;
+
+  if(bDebug)
+  {
+    cout << "matTrf: " <<    matTrf << endl << "matR: " << matR << endl << "matt: " << matt << endl;
+    cout << "q: " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << endl;
+    cout << "trans: " << trans << endl;
+    cout << "pose from getPoseFromTrfMat(): " << pose << endl;
+  }
 }
+
+
+//////////////////
+// main
+//////////////////
 
 int main(int argc, const char* argv[]) {
   if (argc < 2) {
@@ -189,17 +206,30 @@ int main(int argc, const char* argv[]) {
 
   /////////////////////////////////////////////////////////////////////////////                                                                  
   
+  /////////////
+  // Config
+  /////////////
+  bool bDebug = true;
+  int iNumPolygonsToConsider = 3;
+  int iNumIterations = 10;
+  bool bSetObservationsExplicitly = true;
+
   // Load data
   DataReader *pDataReader = new DataReader();
   vector<vector<tsPolygon>> vvPolygonsInFlow;
-  bool bDebug = true;
-  int iNumPolygonsToConsider = 0;
   pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, bDebug);
+
+  // Get 3D points
   vector<Vector3d> true_points;
   if(iNumPolygonsToConsider == 0) iNumPolygonsToConsider = vvPolygonsInFlow[0].size();
   pDataReader->getTruePoints(vvPolygonsInFlow[0], iNumPolygonsToConsider, true_points, bDebug);
   cout << "# true_points: " << true_points.size() << endl;
-
+  
+  // Get 2D observations 
+  vector<Vector2d> v2dObservations;
+  pDataReader->getObservations(vvPolygonsInFlow[0], iNumPolygonsToConsider, v2dObservations, bDebug);
+  cout << "# observations: " << v2dObservations.size() << endl;
+  
   Mat matP, matHiToG, matHgToI, matK, matD;
   pDataReader->setFileExtrinsics(YML_EXTRNSICS, matP, matHgToI, matHiToG, bDebug);
   pDataReader->setFileIntrinsics(YML_INTRINSICS, matK, matD, bDebug);
@@ -224,9 +254,9 @@ int main(int argc, const char* argv[]) {
   Mat matKinv = matK.inv();
   Mat matRt = matKinv * matP;   // Trf of World wrt Cam
   g2o::SE3Quat pose0;
-  getPoseFromTrfMat(matRt, pose0);
+  getPoseFromTrfMat(matRt, pose0, bDebug);
 
-  // Add pose to vertex
+  // Add first pose to vertex -- Trf of World wrt Camera, obtained from P = K*[R|t]
   vector<g2o::SE3Quat, aligned_allocator<g2o::SE3Quat> > true_poses;
   int vertex_id = 0;
   g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
@@ -251,18 +281,20 @@ int main(int argc, const char* argv[]) {
   for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
   {
       Mat matTrf = vMatTrfs[iTrfIdx];
-      // Now, we need Trf of World wrt Cam
-      Mat matTrfInv = matTrf.inv();
-      cout << "matTrf: " << matTrf << endl;
+      // TODO: Initialize pose as we would in levmar
+      // ...
+
+      if(bDebug) cout << "matTrf: " << matTrf << endl;
+      // Now, we need Trf of new World frame wrt Cam frame
       newTrfForPose = newTrfForPose * matTrf;
-      cout << "newTrfForPose: " << newTrfForPose << endl;
+      if(bDebug) cout << "newTrfForPose: " << newTrfForPose << endl;
       g2o::SE3Quat pose;
-      getPoseFromTrfMat(newTrfForPose, pose);
+      getPoseFromTrfMat(newTrfForPose, pose, bDebug);
       g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
       v_se3->setId(vertex_id);
-      if(iTrfIdx < 2)
+      if(iTrfIdx < 1)
       {
-        v_se3->setFixed(true); //-- In example, pose0 and pose1 set as fixed
+        v_se3->setFixed(true); //-- In example, pose0 and pose1 set as fixed. In our case only Trf of W wrt C is fixed.
       }
       v_se3->setEstimate(pose);
       optimizer.addVertex(v_se3);
@@ -290,10 +322,14 @@ int main(int argc, const char* argv[]) {
                               g2o::Sampler::gaussRand(0., 1)));
     int num_obs = 0;
     for (size_t j = 0; j < true_poses.size(); ++j) {
-      Vector2d z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
+      Vector2d z;
+      if(bSetObservationsExplicitly)
+        z = v2dObservations[i + true_points.size()*j];
+      else 
+        z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
       if(i<2 && j <3)
       {
-          cout << "projection is " << endl 
+          if(bDebug) cout << "projection is " << endl 
                 << z << endl 
                 << " for 3d point (index " << i << ") " << endl 
                 <<  true_points.at(i) << endl 
@@ -346,17 +382,21 @@ int main(int argc, const char* argv[]) {
     }
   }
 
-  // Display pointid_2_true_id
-  int iMapIdx = 0;
-  for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
-      it != pointid_2_trueid.end(); ++it) {
-    cout << "iMapIdx " << iMapIdx++ << " it->first " <<  it->first << ", it->second " << it->second << endl;   
+  if(false)
+  {
+    // Display pointid_2_true_id
+    int iMapIdx = 0;
+    for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
+        it != pointid_2_trueid.end(); ++it) {
+      cout << "iMapIdx " << iMapIdx++ << " it->first " <<  it->first << ", it->second " << it->second << endl;   
+    }
   }
-
-
   cout << endl;
+
+  // Optimize
   optimizer.initializeOptimization();
   optimizer.setVerbose(true);
+
   if (STRUCTURE_ONLY) {
     g2o::StructureOnlySolver<3> structure_only_ba;
     cout << "Performing structure-only BA:" << endl;
@@ -368,15 +408,15 @@ int main(int argc, const char* argv[]) {
           static_cast<g2o::OptimizableGraph::Vertex*>(it->second);
       if (v->dimension() == 3) points.push_back(v);
     }
-    structure_only_ba.calc(points, 10);
+    structure_only_ba.calc(points, iNumIterations);
   }
 
   //////////////////////////////////////////////////////////////
-  // optimizer.save("test.g2o");
+  optimizer.save("input_graph.g2o");
   cout << endl;
   cout << "///////////////////////////////////" << endl;
   cout << "Performing full BA:" << endl;
-  optimizer.optimize(10);
+  optimizer.optimize(iNumIterations);
   cout << endl;
   cout << "Point error before optimisation (inliers only): "
       << sqrt(sum_diff2 / inliers.size()) << endl;
@@ -406,15 +446,19 @@ int main(int argc, const char* argv[]) {
   cout << endl;
   //////////////////////////////////////////////////////////////
 
-  for(int i = 0; i < (int)true_poses.size(); i++)
+  if(bDebug)
   {
-    g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
-    if (v_it == optimizer.vertices().end()) {
-              cerr << "Vertex " << i << " not in graph!" << endl;
-              exit(-1);
-          } 
+    for(int i = 0; i < (int)true_poses.size(); i++)
+    {
+      g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
+      if (v_it == optimizer.vertices().end()) {
+                cerr << "Vertex " << i << " not in graph!" << endl;
+                exit(-1);
+            } 
 
-    g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
-    cout << v_pose->estimate() << endl;
+      g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
+      cout << v_pose->estimate() << endl;
+    }
   }
+
 }

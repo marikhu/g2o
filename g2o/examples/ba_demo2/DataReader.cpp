@@ -252,9 +252,29 @@ void DataReader::getTruePoints(vector<tsPolygon> vPolygonsInFlow, int iNumPolygo
         {
             Point3d pt = polygon.vPtsW[iPtIdx];
             true_points.push_back(Vector3d(pt.x, pt.y, pt.z));
+            if(bDebug) cout << "iPolygonIdx: " << iPolygonIdx << " iPtIdx: " << iPtIdx << "\t" << pt.x << ", " << pt.y << ", " << pt.z << endl;
         }
     }
 }
+
+void DataReader::getObservations(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Vector2d> &observations, bool bDebug)
+{
+    observations.clear();
+    int iNumPolygons = (int)vPolygonsInFlow.size();
+    for(int iPolygonIdx = 0; iPolygonIdx < iNumPolygons; iPolygonIdx++)
+    {
+        if(iPolygonIdx >= iNumPolygonsToConsider) break;
+        tsPolygon polygon = vPolygonsInFlow[iPolygonIdx];
+        int iNumPts = (int)polygon.vPtsW.size();
+        for(int iPtIdx = 0; iPtIdx < iNumPts; iPtIdx++)
+        {
+            Point2d pt = polygon.vPtsI[iPtIdx];
+            observations.push_back(Vector2d(pt.x, pt.y));
+            if(bDebug) cout << "iPolygonIdx: " << iPolygonIdx << " iPtIdx: " << iPtIdx << "\t" << pt.x << ", " << pt.y << endl;
+        }
+    }
+}
+
 
 // Given polygons in flow, get the 3D world points
 void DataReader::getTrfs(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Mat> &vMatTrfs, bool bDebug)
