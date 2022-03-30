@@ -25,9 +25,13 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdint.h>
+#include <signal.h>
 
 #include <iostream>
 #include <unordered_set>
+#include <thread>
+#include <random>
+using namespace std;
 
 #include "g2o/core/optimization_algorithm_factory.h"
 #include "g2o/core/robust_kernel_impl.h"
@@ -36,26 +40,56 @@
 #include "g2o/stuff/sampler.h"
 #include "g2o/types/sba/types_six_dof_expmap.h"
 
-#include "DataReader.h"
-
 #include <cv.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 using namespace cv;
 
-
-
 #if defined G2O_HAVE_CHOLMOD
-G2O_USE_OPTIMIZATION_LIBRARY(cholmod);
+  G2O_USE_OPTIMIZATION_LIBRARY(cholmod);
 #else
-G2O_USE_OPTIMIZATION_LIBRARY(eigen);
+  G2O_USE_OPTIMIZATION_LIBRARY(eigen);
 #endif
-
 G2O_USE_OPTIMIZATION_LIBRARY(dense);
-
 using namespace Eigen;
-using namespace std;
+
+using clk = std::chrono::high_resolution_clock;
+using time_point = std::chrono::time_point<clk>;
+using dur_double = std::chrono::duration<double>;
+using std::chrono::duration_cast;
+
+#include "DataReader.h"
+
+/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+
+class cTimer
+{
+public:
+    cTimer(const std::string &cmd) : _cmd{cmd}, _start{clk::now()} {};
+
+    double time_ns()
+    {
+        auto duration = clk::now() - _start;
+        auto elapsed_s = duration_cast<dur_double>(duration).count();
+        return elapsed_s * 1000 * 1000 * 1000;
+    }
+
+    ~cTimer(){};
+
+private:
+    std::string _cmd;
+    time_point _start;
+};
+
+int intRand(const int &min, const int &max)
+{
+    static thread_local std::mt19937 generator;
+    std::uniform_int_distribution<int> distribution(min, max);
+    return distribution(generator);
+}
 
 class Sample {
 public:
@@ -229,6 +263,10 @@ int main(int argc, const char* argv[]) {
   vector<Vector2d> v2dObservations;
   pDataReader->getObservations(vvPolygonsInFlow[0], iNumPolygonsToConsider, v2dObservations, bDebug);
   cout << "# observations: " << v2dObservations.size() << endl;
+  for(int i = 0; i < (int)v2dObservations.size(); i++)
+  {
+    cout << "i: " << i << " -- (" << v2dObservations[i].x() << ", " << v2dObservations[i].y() << ")" << endl;
+  }
   
   Mat matP, matHiToG, matHgToI, matK, matD;
   pDataReader->setFileExtrinsics(YML_EXTRNSICS, matP, matHgToI, matHiToG, bDebug);
@@ -312,6 +350,8 @@ int main(int argc, const char* argv[]) {
   unordered_map<int, int> pointid_2_trueid;
   unordered_set<int> inliers;
 
+  int iCount = 0;
+  int iNumPtsPerPolygon = (int)true_points.size()/iNumPolygonsToConsider;
   for (size_t i = 0; i < true_points.size(); ++i) {
     g2o::VertexPointXYZ* v_p = new g2o::VertexPointXYZ();
     v_p->setId(point_id);
@@ -324,9 +364,17 @@ int main(int argc, const char* argv[]) {
     for (size_t j = 0; j < true_poses.size(); ++j) {
       Vector2d z;
       if(bSetObservationsExplicitly)
-        z = v2dObservations[i + true_points.size()*j];
+      {
+        int iIdx = (i % iNumPtsPerPolygon)+ iNumPtsPerPolygon * j;
+        cout << "iIdx: " << iIdx << endl;
+        z = v2dObservations[iIdx];
+      }
       else 
         z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
+
+      Vector2d z2 = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
+      cout << iCount++ << " z: " << z.x() << ", " << z.y()  <<  " z2: " << z2.x() << ", " << z2.y()  << endl;
+
       if(i<2 && j <3)
       {
           if(bDebug) cout << "projection is " << endl 
@@ -416,7 +464,14 @@ int main(int argc, const char* argv[]) {
   cout << endl;
   cout << "///////////////////////////////////" << endl;
   cout << "Performing full BA:" << endl;
-  optimizer.optimize(iNumIterations);
+
+  // Time the optimization
+  auto t = cTimer{__FUNCTION__};
+  optimizer.optimize(iNumIterations, false);
+  double dTimeNs = t.time_ns();
+  cout << "time: " << dTimeNs / 1000 << " us" << endl;
+  cout << "time: " << dTimeNs / 1e6 << " ms" << endl;
+
   cout << endl;
   cout << "Point error before optimisation (inliers only): "
       << sqrt(sum_diff2 / inliers.size()) << endl;

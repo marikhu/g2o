@@ -178,7 +178,7 @@ void DataReader::setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPol
         }
         namedWindow("GeneratedPolygons", 0);
         imshow("GeneratedPolygons", matImg);
-        waitKey(0);
+        waitKey(1);
     }
 
     if (_fs.isOpened())

@@ -3,8 +3,10 @@ set(CMAKE_LEGACY_CYGWIN_WIN32 0)
 
 project(ba_demo)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
+set(CMAKE_CXX_COMPILER g++)
+add_definitions(-O3)
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
 # Find Eigen3. If it defines the target, this is used. If not,
 # fall back to the using the module form.
@@ -40,6 +42,7 @@ target_link_libraries(ba_demo
     g2o_core.so                  g2o_incremental.so   g2o_parser.so          g2o_solver_dense.so    g2o_solver_structure_only.so  g2o_types_sba.so      g2o_types_slam2d.so
     g2o_csparse_extension.so     g2o_interactive.so   g2o_simulator.so       g2o_solver_eigen.so    g2o_stuff.so                  g2o_types_sclam2d.so  g2o_types_slam3d_addons.so
     g2o_ext_freeglut_minimal.so  g2o_interface.so     g2o_solver_cholmod.so  g2o_solver_pcg.so      g2o_types_data.so             g2o_types_sim3.so     g2o_types_slam3d.so
+    glog
 )
 
 MESSAGE("OpenCV_INCLUDE_DIRS " ${OpenCV_INCLUDE_DIRS})
