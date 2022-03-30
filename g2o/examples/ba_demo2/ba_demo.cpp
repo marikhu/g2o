@@ -244,7 +244,7 @@ int main(int argc, const char* argv[]) {
   // Config
   /////////////
   bool bDebug = true;
-  int iNumPolygonsToConsider = 3;
+  int iNumPolygonsToConsider = 5; // If 0, all polygons are considered
   int iNumIterations = 10;
   bool bSetObservationsExplicitly = true;
 
@@ -253,10 +253,10 @@ int main(int argc, const char* argv[]) {
   vector<vector<tsPolygon>> vvPolygonsInFlow;
   pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, bDebug);
 
-  // Get 3D points
+  // Get 3D points for the first polygon, considered as the true points
   vector<Vector3d> true_points;
   if(iNumPolygonsToConsider == 0) iNumPolygonsToConsider = vvPolygonsInFlow[0].size();
-  pDataReader->getTruePoints(vvPolygonsInFlow[0], iNumPolygonsToConsider, true_points, bDebug);
+  pDataReader->getTruePoints(vvPolygonsInFlow[0][0], true_points, bDebug);
   cout << "# true_points: " << true_points.size() << endl;
   
   // Get 2D observations 
@@ -264,9 +264,7 @@ int main(int argc, const char* argv[]) {
   pDataReader->getObservations(vvPolygonsInFlow[0], iNumPolygonsToConsider, v2dObservations, bDebug);
   cout << "# observations: " << v2dObservations.size() << endl;
   for(int i = 0; i < (int)v2dObservations.size(); i++)
-  {
     cout << "i: " << i << " -- (" << v2dObservations[i].x() << ", " << v2dObservations[i].y() << ")" << endl;
-  }
   
   Mat matP, matHiToG, matHgToI, matK, matD;
   pDataReader->setFileExtrinsics(YML_EXTRNSICS, matP, matHgToI, matHiToG, bDebug);
@@ -351,8 +349,8 @@ int main(int argc, const char* argv[]) {
   unordered_set<int> inliers;
 
   int iCount = 0;
-  int iNumPtsPerPolygon = (int)true_points.size()/iNumPolygonsToConsider;
-  for (size_t i = 0; i < true_points.size(); ++i) {
+  int iNumPtsPerPolygon = (int)true_points.size();
+  for (size_t i = 0; i < iNumPtsPerPolygon; ++i) {
     g2o::VertexPointXYZ* v_p = new g2o::VertexPointXYZ();
     v_p->setId(point_id);
     v_p->setMarginalized(true);
@@ -366,14 +364,14 @@ int main(int argc, const char* argv[]) {
       if(bSetObservationsExplicitly)
       {
         int iIdx = (i % iNumPtsPerPolygon)+ iNumPtsPerPolygon * j;
-        cout << "iIdx: " << iIdx << endl;
+        cout << "iIdx: " << iIdx << " for i " << i  << " and j " << j << endl;
         z = v2dObservations[iIdx];
       }
       else 
         z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
 
       Vector2d z2 = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
-      cout << iCount++ << " z: " << z.x() << ", " << z.y()  <<  " z2: " << z2.x() << ", " << z2.y()  << endl;
+      cout << iCount++ << " z: " << z.x() << ", " << z.y()  <<  " z2: " << z2.x() << ", " << z2.y() << " for i " << i  << " and j " << j << endl;;
 
       if(i<2 && j <3)
       {
@@ -501,7 +499,7 @@ int main(int argc, const char* argv[]) {
   cout << endl;
   //////////////////////////////////////////////////////////////
 
-  if(bDebug)
+  if(false) //bDebug)
   {
     for(int i = 0; i < (int)true_poses.size(); i++)
     {

@@ -239,21 +239,15 @@ void DataReader::setFileIntrinsics(string sFile, Mat &matK, Mat &matD, bool bDeb
 }
 
 // Given polygons in flow, get the 3D world points
-void DataReader::getTruePoints(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Vector3d> &true_points, bool bDebug)
+void DataReader::getTruePoints(tsPolygon polygon, vector<Vector3d> &true_points, bool bDebug)
 {
     true_points.clear();
-    int iNumPolygons = (int)vPolygonsInFlow.size();
-    for(int iPolygonIdx = 0; iPolygonIdx < iNumPolygons; iPolygonIdx++)
+    int iNumPts = (int)polygon.vPtsW.size();
+    for(int iPtIdx = 0; iPtIdx < iNumPts; iPtIdx++)
     {
-        if(iPolygonIdx >= iNumPolygonsToConsider) break;
-        tsPolygon polygon = vPolygonsInFlow[iPolygonIdx];
-        int iNumPts = (int)polygon.vPtsW.size();
-        for(int iPtIdx = 0; iPtIdx < iNumPts; iPtIdx++)
-        {
-            Point3d pt = polygon.vPtsW[iPtIdx];
-            true_points.push_back(Vector3d(pt.x, pt.y, pt.z));
-            if(bDebug) cout << "iPolygonIdx: " << iPolygonIdx << " iPtIdx: " << iPtIdx << "\t" << pt.x << ", " << pt.y << ", " << pt.z << endl;
-        }
+        Point3d pt = polygon.vPtsW[iPtIdx];
+        true_points.push_back(Vector3d(pt.x, pt.y, pt.z));
+        if(bDebug) cout << "iPolygonIdx: " << 0 << " iPtIdx: " << iPtIdx << "\t" << pt.x << ", " << pt.y << ", " << pt.z << endl;
     }
 }
 
