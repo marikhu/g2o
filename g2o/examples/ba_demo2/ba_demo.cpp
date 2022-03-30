@@ -247,6 +247,9 @@ int main(int argc, const char* argv[]) {
   int iNumPolygonsToConsider = 3; // If 0, all polygons are considered
   int iNumIterations = 10;
   bool bSetObservationsExplicitly = true;
+  float fGaussNoiseStdDev = 1.0f;
+  int iImgWidth = 3000;
+  int iImgHeight = 2000;
 
   // Load data
   DataReader *pDataReader = new DataReader();
@@ -258,17 +261,28 @@ int main(int argc, const char* argv[]) {
   if(iNumPolygonsToConsider == 0) iNumPolygonsToConsider = vvPolygonsInFlow[0].size();
   pDataReader->getTruePoints(vvPolygonsInFlow[0][0], true_points, bDebug);
   cout << "# true_points: " << true_points.size() << endl;
-  
+
   // Get 2D observations 
   vector<Vector2d> v2dObservations;
   pDataReader->getObservations(vvPolygonsInFlow[0], iNumPolygonsToConsider, v2dObservations, bDebug);
   cout << "# observations: " << v2dObservations.size() << endl;
   for(int i = 0; i < (int)v2dObservations.size(); i++)
     cout << "i: " << i << " -- (" << v2dObservations[i].x() << ", " << v2dObservations[i].y() << ")" << endl;
-  
+
   Mat matP, matHiToG, matHgToI, matK, matD;
   pDataReader->setFileExtrinsics(YML_EXTRNSICS, matP, matHgToI, matHiToG, bDebug);
   pDataReader->setFileIntrinsics(YML_INTRINSICS, matK, matD, bDebug);
+
+  // Initialize 3D points
+  // Currently, true_points are added to the vertices with gaussian random noise of mean = 0, std_dev = 1 (in world frame, meters)
+  // ToDo:
+  //  - Initialize Az = 0 for the first point, Compute Ax, Ay
+  //  - Initialize Xz = Az for all other points, Compute Xx, Xy
+  // We have observations on the image
+  //  - Given point on the image, point on normalized image plane in camera coordinates and point on the ground, we get a ray
+  //  - Given height of a point on the ray, we can locate 3D point on the ray
+
+
 
   /////////////////////////////////////////////////////////////////////////////                                                                  
 
@@ -323,7 +337,7 @@ int main(int argc, const char* argv[]) {
       if(bDebug) cout << "matTrf: " << matTrf << endl;
       // Now, we need Trf of new World frame wrt Cam frame
       newTrfForPose = newTrfForPose * matTrf;
-      if(bDebug) cout << "newTrfForPose: " << newTrfForPose << endl;
+      cout << "newTrfForPose: " << newTrfForPose << endl;
       g2o::SE3Quat pose;
       getPoseFromTrfMat(newTrfForPose, pose, bDebug);
       g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
@@ -342,7 +356,8 @@ int main(int argc, const char* argv[]) {
  
   int point_id = vertex_id;
   int point_num = 0;
-  double sum_diff2 = 0;
+  double sum_diff2_W = 0;
+  double sum_diff2_I = 0;
 
   cout << endl;
   unordered_map<int, int> pointid_2_trueid;
@@ -354,10 +369,13 @@ int main(int argc, const char* argv[]) {
     g2o::VertexPointXYZ* v_p = new g2o::VertexPointXYZ();
     v_p->setId(point_id);
     v_p->setMarginalized(true);
-    v_p->setEstimate(true_points.at(i) +
-                    Vector3d(g2o::Sampler::gaussRand(0., 1),
-                              g2o::Sampler::gaussRand(0., 1),
-                              g2o::Sampler::gaussRand(0., 1)));
+    double dRandX = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
+    double dRandY = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
+    double dRandZ = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
+    v_p->setEstimate(true_points.at(i) + Vector3d(dRandX, dRandY, dRandZ));
+    Vector3d ptW = v_p->estimate();
+
+    // Checking for inliers/outliers
     int num_obs = 0;
     for (size_t j = 0; j < true_poses.size(); ++j) {
       Vector2d z;
@@ -370,9 +388,13 @@ int main(int argc, const char* argv[]) {
       else 
         z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
 
-      Vector2d z2 = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
-      cout << iCount++ << " z: " << z.x() << ", " << z.y()  <<  " z2: " << z2.x() << ", " << z2.y() << " for i " << i  << " and j " << j << endl;;
-
+      if(bDebug)
+      {
+        Vector2d z2 = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
+        cout << iCount++ << " z: " << z.x() << ", " << z.y()  
+              <<  " z2: " << z2.x() << ", " << z2.y() << " for i " << i  << " and j " << j << endl;;
+      }
+      
       if(i<2 && j <3)
       {
           if(bDebug) cout << "projection is " << endl 
@@ -382,21 +404,31 @@ int main(int argc, const char* argv[]) {
                 << " going through trf (index " << j << ") " << endl 
                 << true_poses.at(j) << endl;
       }
-      if (z[0] >= 0 && z[1] >= 0 && z[0] < 1920 && z[1] < 1080) {
+      if (z[0] >= 0 && z[1] >= 0 && z[0] < iImgWidth && z[1] < iImgHeight) {
         ++num_obs;
       }
     }
+
+    // Considering those points which are inliers or those which are within the image dimensions
     if (num_obs >= 2) {
       optimizer.addVertex(v_p);
+      Vector2d ptI_obs = v2dObservations[i];
       bool inlier = true;
       for (size_t j = 0; j < true_poses.size(); ++j) {
-        Vector2d z =
-            cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
+        Vector2d z;
+        if(bSetObservationsExplicitly)
+        {
+          int iIdx = (i % iNumPtsPerPolygon)+ iNumPtsPerPolygon * j;
+          cout << "iIdx: " << iIdx << " for i " << i  << " and j " << j << endl;
+          z = v2dObservations[iIdx];
+        }
+        else 
+          z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
 
-        if (z[0] >= 0 && z[1] >= 0 && z[0] < 1920 && z[1] < 1080) {
+        if (z[0] >= 0 && z[1] >= 0 && z[0] < iImgWidth && z[1] < iImgHeight) {
           double sam = g2o::Sampler::uniformRand(0., 1.);
           if (sam < OUTLIER_RATIO) {
-            z = Vector2d(Sample::uniform(0, 1920), Sample::uniform(0, 1080));
+            z = Vector2d(Sample::uniform(0, iImgWidth), Sample::uniform(0, iImgHeight));
             inlier = false;
           }
           z += Vector2d(g2o::Sampler::gaussRand(0., PIXEL_NOISE),
@@ -418,9 +450,34 @@ int main(int argc, const char* argv[]) {
 
       if (inlier) {
         inliers.insert(point_id);
-        Vector3d diff = v_p->estimate() - true_points[i];
+        Vector3d diffW = v_p->estimate() - true_points[i];
 
-        sum_diff2 += diff.dot(diff);
+        sum_diff2_W += diffW.dot(diffW);
+
+        // Get projection of all ptW for the poses
+        for (size_t j = 0; j < true_poses.size(); ++j) 
+        {          
+          // Get the 3D point
+          g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(j);
+          if (v_it == optimizer.vertices().end()) {
+                cerr << "Vertex " << j << " not in graph!" << endl;
+                exit(-1);
+          } 
+          g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
+
+          cout << endl << "point index i: " << i << endl;
+          cout << "pose index j: " << j << endl;
+          cout << "true_point: " << endl << true_points[i] << endl;
+          cout << "v_p init: " << endl << v_p->estimate() << endl;
+          cout << "diffW: " << diffW << endl;
+          cout << "v_pose init: " << endl << v_pose->estimate() << endl;
+          cout << "ptI_obs: " << endl << ptI_obs << endl;
+          Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
+          cout << "ptI_reproj: " << endl << ptI_reproj << endl;
+          Vector2d diffI = ptI_obs - ptI_reproj;
+          cout << "diffI : " << diffI << endl;
+          sum_diff2_I = diffI.dot(diffI);
+        }
       }
       pointid_2_trueid.insert(make_pair(point_id, i));
       ++point_id;
@@ -467,8 +524,6 @@ int main(int argc, const char* argv[]) {
   auto t = cTimer{__FUNCTION__};
   optimizer.optimize(iNumIterations, false);
   double dTimeNs = t.time_ns();
-  cout << "time: " << dTimeNs / 1000 << " us" << endl;
-  cout << "time: " << dTimeNs / 1e6 << " ms" << endl;
   //////////////////////////////////////////////////////////////
 
   if(bDebug)
@@ -487,10 +542,14 @@ int main(int argc, const char* argv[]) {
   }
 
   cout << endl;
-  cout << "Point error before optimisation (inliers only): "
-      << sqrt(sum_diff2 / inliers.size()) << endl;
+  cout << "Point error before optimisation (inliers only) 3D world points: "
+      << sqrt(sum_diff2_W / inliers.size()) << endl;
+  cout << "Point error before optimisation (inliers only) 2D image points: "
+      << sqrt(sum_diff2_I / ((int)inliers.size()*iNumPolygonsToConsider)) << endl;
+
   point_num = 0;
-  sum_diff2 = 0;
+  sum_diff2_W = 0;
+  sum_diff2_I = 0;
   for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
       it != pointid_2_trueid.end(); ++it) {
     g2o::HyperGraph::VertexIDMap::iterator v_it =
@@ -504,12 +563,44 @@ int main(int argc, const char* argv[]) {
       cerr << "Vertex " << it->first << "is not a PointXYZ!" << endl;
       exit(-1);
     }
-    Vector3d diff = v_p->estimate() - true_points[it->second];
+    Vector3d diffW = v_p->estimate() - true_points[it->second];    
     if (inliers.find(it->first) == inliers.end()) continue;
-    sum_diff2 += diff.dot(diff);
+    sum_diff2_W += diffW.dot(diffW);
+
+    // Get projection of all ptW for the poses
+    for (size_t j = 0; j < true_poses.size(); ++j) 
+    {         
+      int iObsIdx = it->second + j * iNumPtsPerPolygon;
+      cout << endl << "iObsIdx: " << iObsIdx << endl;
+      Vector2d ptI_obs = v2dObservations[iObsIdx];    
+      // Get the 3D point
+      g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(j);
+      if (v_it == optimizer.vertices().end()) 
+      {
+            cerr << "Vertex " << j << " not in graph!" << endl;
+            exit(-1);
+      } 
+      g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
+      cout << "point index i: " << it->second << endl;
+      cout << "pose index j: " << j << endl;
+      cout << "true_point: " << endl << true_points[it->second] << endl;
+      cout << "v_p opt: " << endl << v_p->estimate() << endl;
+      cout << "diffW: " << diffW << endl;
+      cout << "v_pose opt: " << endl << v_pose->estimate() << endl;
+      cout << "ptI_obs: " << endl << ptI_obs << endl;
+      Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
+      cout << "ptI_reproj: " << endl << ptI_reproj << endl;
+      Vector2d diffI = ptI_obs - ptI_reproj;
+      cout << "diffI: " << diffI << endl;
+      sum_diff2_I = diffI.dot(diffI);
+    }
     ++point_num;
   }
-  cout << "Point error after optimisation (inliers only): "
-      << sqrt(sum_diff2 / inliers.size()) << endl;
+  cout << "Point error after optimisation (inliers only) 3D world points: "
+      << sqrt(sum_diff2_W / inliers.size()) << endl;
+  cout << "Point error after optimisation (inliers only) 2D image points: "
+      << sqrt(sum_diff2_I / ((int)inliers.size()*iNumPolygonsToConsider)) << endl;
   cout << endl;
+
+  cout << "optimization time: " <<dTimeNs / 1e6 << " ms" << endl;
 }
