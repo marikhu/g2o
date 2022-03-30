@@ -243,13 +243,14 @@ int main(int argc, const char* argv[]) {
   /////////////
   // Config
   /////////////
-  bool bDebug = true;
+  bool bDebug = false;
   int iNumPolygonsToConsider = 3; // If 0, all polygons are considered
   int iNumIterations = 10;
-  bool bSetObservationsExplicitly = true;
-  float fGaussNoiseStdDev = 1.0f;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
+  float fGaussNoiseStdDev = 1.0f;
+  bool bSetObservationsExplicitly = true;
+  bool bInitTrfWtoWAsUnknown = true;
 
   // Load data
   DataReader *pDataReader = new DataReader();
@@ -331,12 +332,16 @@ int main(int argc, const char* argv[]) {
   for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
   {
       Mat matTrf = vMatTrfs[iTrfIdx];
-      // TODO: Initialize pose as we would in levmar
-      // ...
-
       if(bDebug) cout << "matTrf: " << matTrf << endl;
       // Now, we need Trf of new World frame wrt Cam frame
-      newTrfForPose = newTrfForPose * matTrf;
+      if(bInitTrfWtoWAsUnknown)
+      {
+        // Here, initializing tx, ty, Rz to 0, 
+        // considering identity for rotation matrix and zero vector for translation matrix
+        newTrfForPose = newTrfForPose;
+      }
+      else
+        newTrfForPose = newTrfForPose * matTrf;
       cout << "newTrfForPose: " << newTrfForPose << endl;
       g2o::SE3Quat pose;
       getPoseFromTrfMat(newTrfForPose, pose, bDebug);
@@ -382,7 +387,7 @@ int main(int argc, const char* argv[]) {
       if(bSetObservationsExplicitly)
       {
         int iIdx = (i % iNumPtsPerPolygon)+ iNumPtsPerPolygon * j;
-        cout << "iIdx: " << iIdx << " for i " << i  << " and j " << j << endl;
+        //cout << "iIdx: " << iIdx << " for i " << i  << " and j " << j << endl;
         z = v2dObservations[iIdx];
       }
       else 
@@ -419,7 +424,7 @@ int main(int argc, const char* argv[]) {
         if(bSetObservationsExplicitly)
         {
           int iIdx = (i % iNumPtsPerPolygon)+ iNumPtsPerPolygon * j;
-          cout << "iIdx: " << iIdx << " for i " << i  << " and j " << j << endl;
+          //cout << "iIdx: " << iIdx << " for i " << i  << " and j " << j << endl;
           z = v2dObservations[iIdx];
         }
         else 
@@ -451,7 +456,6 @@ int main(int argc, const char* argv[]) {
       if (inlier) {
         inliers.insert(point_id);
         Vector3d diffW = v_p->estimate() - true_points[i];
-
         sum_diff2_W += diffW.dot(diffW);
 
         // Get projection of all ptW for the poses
@@ -465,18 +469,21 @@ int main(int argc, const char* argv[]) {
           } 
           g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
 
-          cout << endl << "point index i: " << i << endl;
-          cout << "pose index j: " << j << endl;
-          cout << "true_point: " << endl << true_points[i] << endl;
-          cout << "v_p init: " << endl << v_p->estimate() << endl;
-          cout << "diffW: " << diffW << endl;
-          cout << "v_pose init: " << endl << v_pose->estimate() << endl;
-          cout << "ptI_obs: " << endl << ptI_obs << endl;
           Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
-          cout << "ptI_reproj: " << endl << ptI_reproj << endl;
           Vector2d diffI = ptI_obs - ptI_reproj;
-          cout << "diffI : " << diffI << endl;
           sum_diff2_I = diffI.dot(diffI);
+          if(bDebug)
+          {
+            cout << endl << "point index i: " << i << endl;
+            cout << "pose index j: " << j << endl;
+            cout << "true_point: " << endl << true_points[i] << endl;
+            cout << "v_p init: " << endl << v_p->estimate() << endl;
+            cout << "diffW: " << diffW << endl;
+            cout << "v_pose init: " << endl << v_pose->estimate() << endl;
+            cout << "ptI_obs: " << endl << ptI_obs << endl;
+            cout << "ptI_reproj: " << endl << ptI_reproj << endl;
+            cout << "diffI : " << diffI << endl;
+          }
         }
       }
       pointid_2_trueid.insert(make_pair(point_id, i));
@@ -542,10 +549,10 @@ int main(int argc, const char* argv[]) {
   }
 
   cout << endl;
-  cout << "Point error before optimisation (inliers only) 3D world points: "
+  cout << "Point error before optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
-  cout << "Point error before optimisation (inliers only) 2D image points: "
-      << sqrt(sum_diff2_I / ((int)inliers.size()*iNumPolygonsToConsider)) << endl;
+  cout << "Point error before optimization (inliers only) 2D image points: "
+      << sqrt(sum_diff2_I / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
 
   point_num = 0;
   sum_diff2_W = 0;
@@ -571,7 +578,6 @@ int main(int argc, const char* argv[]) {
     for (size_t j = 0; j < true_poses.size(); ++j) 
     {         
       int iObsIdx = it->second + j * iNumPtsPerPolygon;
-      cout << endl << "iObsIdx: " << iObsIdx << endl;
       Vector2d ptI_obs = v2dObservations[iObsIdx];    
       // Get the 3D point
       g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(j);
@@ -581,26 +587,31 @@ int main(int argc, const char* argv[]) {
             exit(-1);
       } 
       g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
-      cout << "point index i: " << it->second << endl;
-      cout << "pose index j: " << j << endl;
-      cout << "true_point: " << endl << true_points[it->second] << endl;
-      cout << "v_p opt: " << endl << v_p->estimate() << endl;
-      cout << "diffW: " << diffW << endl;
-      cout << "v_pose opt: " << endl << v_pose->estimate() << endl;
-      cout << "ptI_obs: " << endl << ptI_obs << endl;
       Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
-      cout << "ptI_reproj: " << endl << ptI_reproj << endl;
       Vector2d diffI = ptI_obs - ptI_reproj;
-      cout << "diffI: " << diffI << endl;
       sum_diff2_I = diffI.dot(diffI);
+      if(bDebug)
+      {
+        cout << endl << "iObsIdx: " << iObsIdx << endl;
+        cout << "point index i: " << it->second << endl;
+        cout << "pose index j: " << j << endl;
+        cout << "true_point: " << endl << true_points[it->second] << endl;
+        cout << "v_p opt: " << endl << v_p->estimate() << endl;
+        cout << "diffW: " << diffW << endl;
+        cout << "v_pose opt: " << endl << v_pose->estimate() << endl;
+        cout << "ptI_obs: " << endl << ptI_obs << endl;
+        cout << "ptI_reproj: " << endl << ptI_reproj << endl;
+        cout << "diffI: " << diffI << endl;
+      }
     }
     ++point_num;
   }
-  cout << "Point error after optimisation (inliers only) 3D world points: "
+  cout << "Point error after optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
-  cout << "Point error after optimisation (inliers only) 2D image points: "
-      << sqrt(sum_diff2_I / ((int)inliers.size()*iNumPolygonsToConsider)) << endl;
+  cout << "Point error after optimization (inliers only) 2D image points: "
+      << sqrt(sum_diff2_I / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
   cout << endl;
 
+  cout << "# of inliers: " << (int)inliers.size() << endl;
   cout << "optimization time: " <<dTimeNs / 1e6 << " ms" << endl;
 }
