@@ -244,7 +244,7 @@ int main(int argc, const char* argv[]) {
   // Config
   /////////////
   bool bDebug = true;
-  int iNumPolygonsToConsider = 5; // If 0, all polygons are considered
+  int iNumPolygonsToConsider = 3; // If 0, all polygons are considered
   int iNumIterations = 10;
   bool bSetObservationsExplicitly = true;
 
@@ -469,6 +469,22 @@ int main(int argc, const char* argv[]) {
   double dTimeNs = t.time_ns();
   cout << "time: " << dTimeNs / 1000 << " us" << endl;
   cout << "time: " << dTimeNs / 1e6 << " ms" << endl;
+  //////////////////////////////////////////////////////////////
+
+  if(bDebug)
+  {
+    for(int i = 0; i < (int)true_poses.size(); i++)
+    {
+      g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
+      if (v_it == optimizer.vertices().end()) {
+                cerr << "Vertex " << i << " not in graph!" << endl;
+                exit(-1);
+            } 
+
+      g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
+      cout << v_pose->estimate() << endl;
+    }
+  }
 
   cout << endl;
   cout << "Point error before optimisation (inliers only): "
@@ -495,23 +511,5 @@ int main(int argc, const char* argv[]) {
   }
   cout << "Point error after optimisation (inliers only): "
       << sqrt(sum_diff2 / inliers.size()) << endl;
-  cout << "///////////////////////////////////" << endl;
   cout << endl;
-  //////////////////////////////////////////////////////////////
-
-  if(false) //bDebug)
-  {
-    for(int i = 0; i < (int)true_poses.size(); i++)
-    {
-      g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
-      if (v_it == optimizer.vertices().end()) {
-                cerr << "Vertex " << i << " not in graph!" << endl;
-                exit(-1);
-            } 
-
-      g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
-      cout << v_pose->estimate() << endl;
-    }
-  }
-
 }
