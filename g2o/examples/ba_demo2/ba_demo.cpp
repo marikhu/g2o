@@ -243,7 +243,7 @@ int main(int argc, const char* argv[]) {
   /////////////
   // Config
   /////////////
-  bool bDebug = false;
+  bool bDebug = true;
   int iNumPolygonsToConsider = 9; // If 0, all polygons are considered
   int iNumIterations = 10;
   int iImgWidth = 3000;
@@ -666,7 +666,7 @@ int main(int argc, const char* argv[]) {
   cout << "# of inliers: " << (int)inliers.size() << endl;
   cout << "optimization time: " <<dTimeNs / 1e6 << " ms" << endl;
 
-  if(bDebug)
+  if(false)
   {
     int k = 0;
     int iOccurrences = 0;
