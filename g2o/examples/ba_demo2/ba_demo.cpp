@@ -244,11 +244,11 @@ int main(int argc, const char* argv[]) {
   // Config
   /////////////
   bool bDebug = false;
-  int iNumPolygonsToConsider = 3; // If 0, all polygons are considered
+  int iNumPolygonsToConsider = 9; // If 0, all polygons are considered
   int iNumIterations = 10;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
-  float fGaussNoiseStdDev = 1.0f;
+  float fGaussNoiseStdDev = 3.0f;
   bool bSetObservationsExplicitly = true;
   bool bInitTrfWtoWAsUnknown = true;
 
@@ -439,11 +439,11 @@ int main(int argc, const char* argv[]) {
           z += Vector2d(g2o::Sampler::gaussRand(0., PIXEL_NOISE),
                         g2o::Sampler::gaussRand(0., PIXEL_NOISE));
           g2o::EdgeProjectXYZ2UV* e = new g2o::EdgeProjectXYZ2UV();
-          e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(v_p));
+          e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(v_p)); // 3D point
           e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(
-                              optimizer.vertices().find(j)->second));
+                              optimizer.vertices().find(j)->second)); // 3D pose
           e->setMeasurement(z);
-          e->information() = Matrix2d::Identity();
+          e->information() = Matrix2d::Identity();  // Covariance matrix    
           if (ROBUST_KERNEL) {
             g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
             e->setRobustKernel(rk);
@@ -538,11 +538,11 @@ int main(int argc, const char* argv[]) {
     for(int i = 0; i < (int)true_poses.size(); i++)
     {
       g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
-      if (v_it == optimizer.vertices().end()) {
+      if (v_it == optimizer.vertices().end()) 
+      {
                 cerr << "Vertex " << i << " not in graph!" << endl;
                 exit(-1);
-            } 
-
+      }
       g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
       cout << v_pose->estimate() << endl;
     }
@@ -574,6 +574,9 @@ int main(int argc, const char* argv[]) {
     if (inliers.find(it->first) == inliers.end()) continue;
     sum_diff2_W += diffW.dot(diffW);
 
+    int iNumEdges = (int)optimizer.edges().size();
+    cout << "# of edges; " << iNumEdges << endl;
+
     // Get projection of all ptW for the poses
     for (size_t j = 0; j < true_poses.size(); ++j) 
     {         
@@ -588,6 +591,30 @@ int main(int argc, const char* argv[]) {
       } 
       g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
       Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
+
+      // Given vertex index and a pose index, we should be able to find the edge, and its measurement
+      g2o::HyperGraph::EdgeSet edgeSet = optimizer.edges();
+      g2o::EdgeProjectXYZ2UV* e = new g2o::EdgeProjectXYZ2UV();
+        e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(v_p)); // 3D point
+        e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(v_pose)); // 3D pose
+      g2o::HyperGraph::EdgeSet::iterator edge_it = edgeSet.find(e);
+      if(edge_it != optimizer.edges().end())
+      {
+        cout << "Edge found: " << endl;
+        // g2o::EdgeProjectXYZ2UV* edge = dynamic_cast<g2o::EdgeProjectXYZ2UV*>(*edge_it);
+        // g2o::VertexPointXYZ *r1 = dynamic_cast<g2o::VertexPointXYZ*>(edge->vertices()[0]);
+
+        //
+        // //! accessor functions for the measurement represented by the edge
+        // EIGEN_STRONG_INLINE const Measurement& measurement() const {
+        //   return _measurement;
+        // }
+        //
+
+        // cout << "edge->measurement(): " << edge->measurement() << endl;
+        // cout << "-------- ptI_obs: " << endl << ptI_obs << endl;
+      }
+
       Vector2d diffI = ptI_obs - ptI_reproj;
       sum_diff2_I = diffI.dot(diffI);
       if(bDebug)
@@ -614,4 +641,21 @@ int main(int argc, const char* argv[]) {
 
   cout << "# of inliers: " << (int)inliers.size() << endl;
   cout << "optimization time: " <<dTimeNs / 1e6 << " ms" << endl;
+
+  int k = 0;
+  int iOccurrences = 0;
+  for (g2o::HyperGraph::EdgeSet::const_iterator it = optimizer.edges().begin(); it != optimizer.edges().end(); ++it) {
+    g2o::EdgeProjectXYZ2UV* scanmatchEdge = dynamic_cast<g2o::EdgeProjectXYZ2UV*>(*it);
+    if (! scanmatchEdge)
+      continue;
+
+    g2o::VertexPointXYZ* v_p = dynamic_cast<g2o::VertexPointXYZ*>(scanmatchEdge->vertices()[0]);
+    g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(scanmatchEdge->vertices()[1]);
+    cout << k++ << " v_p id: " << v_p->id() << ", v_pose id: " << v_pose->id() << endl;
+
+    cout << "scanmatchEdge->measurement: " << endl << scanmatchEdge->measurement() << endl;
+
+    if(v_p->id()==9) iOccurrences++;
+  }
+  cout << "iOccurences: " << iOccurrences << endl;
 }
