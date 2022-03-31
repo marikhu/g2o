@@ -267,8 +267,11 @@ int main(int argc, const char* argv[]) {
   vector<Vector2d> v2dObservations;
   pDataReader->getObservations(vvPolygonsInFlow[0], iNumPolygonsToConsider, v2dObservations, bDebug);
   cout << "# observations: " << v2dObservations.size() << endl;
-  for(int i = 0; i < (int)v2dObservations.size(); i++)
-    cout << "i: " << i << " -- (" << v2dObservations[i].x() << ", " << v2dObservations[i].y() << ")" << endl;
+  if(bDebug)
+  {
+    for(int i = 0; i < (int)v2dObservations.size(); i++)
+      cout << "i: " << i << " -- (" << v2dObservations[i].x() << ", " << v2dObservations[i].y() << ")" << endl;
+  }
 
   Mat matP, matHiToG, matHgToI, matK, matD;
   pDataReader->setFileExtrinsics(YML_EXTRNSICS, matP, matHgToI, matHiToG, bDebug);
@@ -327,12 +330,11 @@ int main(int argc, const char* argv[]) {
   Mat newTrfForPose = Mat::zeros(4,4,CV_64FC1);
   matRt.copyTo(newTrfForPose(Rect(0,0,4,3)));
   newTrfForPose.at<double>(3,3) = 1;
-  cout << "newTrfForPose: " << newTrfForPose << endl;
+  cout << "pose0 -- Rt from T_WwrtC: " << newTrfForPose << endl;
 
   for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
   {
       Mat matTrf = vMatTrfs[iTrfIdx];
-      if(bDebug) cout << "matTrf: " << matTrf << endl;
       // Now, we need Trf of new World frame wrt Cam frame
       if(bInitTrfWtoWAsUnknown)
       {
@@ -342,7 +344,11 @@ int main(int argc, const char* argv[]) {
       }
       else
         newTrfForPose = newTrfForPose * matTrf;
-      cout << "newTrfForPose: " << newTrfForPose << endl;
+      if(bDebug)
+      {
+        cout << "matTrf: " << endl << matTrf << endl;
+        cout << "newTrfForPose: " << endl << newTrfForPose << endl;
+      }
       g2o::SE3Quat pose;
       getPoseFromTrfMat(newTrfForPose, pose, bDebug);
       g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
@@ -362,7 +368,7 @@ int main(int argc, const char* argv[]) {
   int point_id = vertex_id;
   int point_num = 0;
   double sum_diff2_W = 0;
-  double sum_diff2_I = 0;
+  double sum_diff2_I_gt = 0;
 
   cout << endl;
   unordered_map<int, int> pointid_2_trueid;
@@ -417,7 +423,7 @@ int main(int argc, const char* argv[]) {
     // Considering those points which are inliers or those which are within the image dimensions
     if (num_obs >= 2) {
       optimizer.addVertex(v_p);
-      Vector2d ptI_obs = v2dObservations[i];
+      Vector2d ptI_gt = v2dObservations[i];
       bool inlier = true;
       for (size_t j = 0; j < true_poses.size(); ++j) {
         Vector2d z;
@@ -470,8 +476,8 @@ int main(int argc, const char* argv[]) {
           g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
 
           Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
-          Vector2d diffI = ptI_obs - ptI_reproj;
-          sum_diff2_I = diffI.dot(diffI);
+          Vector2d diffI_gt = ptI_gt - ptI_reproj;
+          sum_diff2_I_gt = diffI_gt.dot(diffI_gt);
           if(bDebug)
           {
             cout << endl << "point index i: " << i << endl;
@@ -480,9 +486,9 @@ int main(int argc, const char* argv[]) {
             cout << "v_p init: " << endl << v_p->estimate() << endl;
             cout << "diffW: " << diffW << endl;
             cout << "v_pose init: " << endl << v_pose->estimate() << endl;
-            cout << "ptI_obs: " << endl << ptI_obs << endl;
+            cout << "ptI_gt: " << endl << ptI_gt << endl;
             cout << "ptI_reproj: " << endl << ptI_reproj << endl;
-            cout << "diffI : " << diffI << endl;
+            cout << "diffI_gt : " << diffI_gt << endl;
           }
         }
       }
@@ -492,7 +498,10 @@ int main(int argc, const char* argv[]) {
     }
   }
 
-  if(false)
+  int iNumEdges = (int)optimizer.edges().size();
+  cout << "# of edges: " << iNumEdges << endl;
+
+  if(bDebug)
   {
     // Display pointid_2_true_id
     int iMapIdx = 0;
@@ -552,11 +561,13 @@ int main(int argc, const char* argv[]) {
   cout << "Point error before optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
   cout << "Point error before optimization (inliers only) 2D image points: "
-      << sqrt(sum_diff2_I / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
+      << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
 
   point_num = 0;
   sum_diff2_W = 0;
-  sum_diff2_I = 0;
+  sum_diff2_I_gt = 0;
+  double sum_diff2_I_meas = 0;
+
   for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
       it != pointid_2_trueid.end(); ++it) {
     g2o::HyperGraph::VertexIDMap::iterator v_it =
@@ -574,14 +585,11 @@ int main(int argc, const char* argv[]) {
     if (inliers.find(it->first) == inliers.end()) continue;
     sum_diff2_W += diffW.dot(diffW);
 
-    int iNumEdges = (int)optimizer.edges().size();
-    cout << "# of edges; " << iNumEdges << endl;
-
     // Get projection of all ptW for the poses
     for (size_t j = 0; j < true_poses.size(); ++j) 
     {         
       int iObsIdx = it->second + j * iNumPtsPerPolygon;
-      Vector2d ptI_obs = v2dObservations[iObsIdx];    
+      Vector2d ptI_gt = v2dObservations[iObsIdx];    
       // Get the 3D point
       g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(j);
       if (v_it == optimizer.vertices().end()) 
@@ -592,31 +600,44 @@ int main(int argc, const char* argv[]) {
       g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
       Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
 
+      Vector2d ptI_meas;
+
       // Given vertex index and a pose index, we should be able to find the edge, and its measurement
-      g2o::HyperGraph::EdgeSet edgeSet = optimizer.edges();
-      g2o::EdgeProjectXYZ2UV* e = new g2o::EdgeProjectXYZ2UV();
-        e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(v_p)); // 3D point
-        e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(v_pose)); // 3D pose
-      g2o::HyperGraph::EdgeSet::iterator edge_it = edgeSet.find(e);
-      if(edge_it != optimizer.edges().end())
+      bool bEdgeFound = false;
+      for (g2o::HyperGraph::EdgeSet::const_iterator it = optimizer.edges().begin(); 
+        it != optimizer.edges().end(); ++it) 
       {
-        cout << "Edge found: " << endl;
-        // g2o::EdgeProjectXYZ2UV* edge = dynamic_cast<g2o::EdgeProjectXYZ2UV*>(*edge_it);
-        // g2o::VertexPointXYZ *r1 = dynamic_cast<g2o::VertexPointXYZ*>(edge->vertices()[0]);
+        g2o::EdgeProjectXYZ2UV* scanmatchEdge = dynamic_cast<g2o::EdgeProjectXYZ2UV*>(*it);
+        if (! scanmatchEdge)
+          continue;
 
-        //
-        // //! accessor functions for the measurement represented by the edge
-        // EIGEN_STRONG_INLINE const Measurement& measurement() const {
-        //   return _measurement;
-        // }
-        //
-
-        // cout << "edge->measurement(): " << edge->measurement() << endl;
-        // cout << "-------- ptI_obs: " << endl << ptI_obs << endl;
+        g2o::VertexPointXYZ* e_v_p = dynamic_cast<g2o::VertexPointXYZ*>(scanmatchEdge->vertices()[0]);
+        g2o::VertexSE3Expmap* e_v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(scanmatchEdge->vertices()[1]);
+        if(e_v_p->id() == v_p->id() && e_v_pose->id() == v_pose->id())
+        {
+          bEdgeFound = true;
+          ptI_meas = scanmatchEdge->measurement();
+          if(bDebug)
+          {
+            cout << "We got a matching edge" << endl;
+            cout << "ptI_meas: " << endl << ptI_meas << endl;
+            cout << "ptI_gt: " << endl << ptI_gt << endl;
+          }
+          break;
+        }
+      }
+      if(!bEdgeFound)
+      {
+        cerr << "Edge not found." << endl;
+        exit(-1);
       }
 
-      Vector2d diffI = ptI_obs - ptI_reproj;
-      sum_diff2_I = diffI.dot(diffI);
+      Vector2d diffI_gt = ptI_gt - ptI_reproj;
+      sum_diff2_I_gt = diffI_gt.dot(diffI_gt);
+
+      Vector2d diffI_meas = ptI_meas - ptI_reproj;
+      sum_diff2_I_meas = diffI_meas.dot(diffI_meas);
+
       if(bDebug)
       {
         cout << endl << "iObsIdx: " << iObsIdx << endl;
@@ -626,36 +647,41 @@ int main(int argc, const char* argv[]) {
         cout << "v_p opt: " << endl << v_p->estimate() << endl;
         cout << "diffW: " << diffW << endl;
         cout << "v_pose opt: " << endl << v_pose->estimate() << endl;
-        cout << "ptI_obs: " << endl << ptI_obs << endl;
+        cout << "ptI_gt: " << endl << ptI_gt << endl;
         cout << "ptI_reproj: " << endl << ptI_reproj << endl;
-        cout << "diffI: " << diffI << endl;
+        cout << "diffI_gt: " << diffI_gt << endl;
+        cout << "diffI_meas: " << diffI_meas << endl;
       }
     }
     ++point_num;
   }
-  cout << "Point error after optimization (inliers only) 3D world points: "
+  cout << endl <<  "Point error after optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
-  cout << "Point error after optimization (inliers only) 2D image points: "
-      << sqrt(sum_diff2_I / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
+  cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_gt): "
+      << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
+  cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_meas): "
+      << sqrt(sum_diff2_I_meas / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
   cout << endl;
 
   cout << "# of inliers: " << (int)inliers.size() << endl;
   cout << "optimization time: " <<dTimeNs / 1e6 << " ms" << endl;
 
-  int k = 0;
-  int iOccurrences = 0;
-  for (g2o::HyperGraph::EdgeSet::const_iterator it = optimizer.edges().begin(); it != optimizer.edges().end(); ++it) {
-    g2o::EdgeProjectXYZ2UV* scanmatchEdge = dynamic_cast<g2o::EdgeProjectXYZ2UV*>(*it);
-    if (! scanmatchEdge)
-      continue;
+  if(bDebug)
+  {
+    int k = 0;
+    int iOccurrences = 0;
+    for (g2o::HyperGraph::EdgeSet::const_iterator it = optimizer.edges().begin(); it != optimizer.edges().end(); ++it) {
+      g2o::EdgeProjectXYZ2UV* scanmatchEdge = dynamic_cast<g2o::EdgeProjectXYZ2UV*>(*it);
+      if (! scanmatchEdge)
+        continue;
 
-    g2o::VertexPointXYZ* v_p = dynamic_cast<g2o::VertexPointXYZ*>(scanmatchEdge->vertices()[0]);
-    g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(scanmatchEdge->vertices()[1]);
-    cout << k++ << " v_p id: " << v_p->id() << ", v_pose id: " << v_pose->id() << endl;
+      g2o::VertexPointXYZ* v_p = dynamic_cast<g2o::VertexPointXYZ*>(scanmatchEdge->vertices()[0]);
+      g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(scanmatchEdge->vertices()[1]);
+      cout << k++ << " v_p id: " << v_p->id() << ", v_pose id: " << v_pose->id() << endl;
+      cout << "scanmatchEdge->measurement: " << endl << scanmatchEdge->measurement() << endl;
 
-    cout << "scanmatchEdge->measurement: " << endl << scanmatchEdge->measurement() << endl;
-
-    if(v_p->id()==9) iOccurrences++;
+      if(v_p->id()==9) iOccurrences++;
+    }
+    cout << "iOccurences: " << iOccurrences << endl;
   }
-  cout << "iOccurences: " << iOccurrences << endl;
 }
