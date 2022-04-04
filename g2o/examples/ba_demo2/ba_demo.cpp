@@ -163,6 +163,19 @@ void getPoseFromTrfMat(Mat matTrf, g2o::SE3Quat &pose, bool bDebug = false)
   }
 }
 
+void getMat(Eigen::Matrix4d pose, Mat &matPose, bool bDebug = false)
+{
+  for(int i =0; i < 4; i++)
+    for(int j = 0; j < 4; j++)
+      matPose.at<double>(i,j) = pose(i, j);
+
+  if(bDebug)
+  {
+    cout << "pose: " << pose << endl;
+    cout << "matPose: " << matPose << endl;
+  }
+}
+
 
 //////////////////
 // main
@@ -211,7 +224,7 @@ int main(int argc, const char* argv[]) {
 
   bool DENSE = false;
   if (argc > 5) {
-    DENSE = atoi(argv[5]) != 0;
+        DENSE = atoi(argv[5]) != 0;
   }
 
   cout << "PIXEL_NOISE: " << PIXEL_NOISE << endl;
@@ -243,14 +256,14 @@ int main(int argc, const char* argv[]) {
   /////////////
   // Config
   /////////////
-  bool bDebug = true;
-  int iNumPolygonsToConsider = 9; // If 0, all polygons are considered
+  bool bDebug = false;
+  int iNumPolygonsToConsider = 3; // If 0, all polygons are considered
   int iNumIterations = 10;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
-  float fGaussNoiseStdDev = 3.0f;
-  bool bSetObservationsExplicitly = true;
-  bool bInitTrfWtoWAsUnknown = true;
+  float fGaussNoiseStdDev = 0.0; //3.0f;
+  bool bSetObservationsExplicitly = false;//true;
+  bool bInitTrfWtoWAsUnknown = false;//true;
 
   // Load data
   DataReader *pDataReader = new DataReader();
@@ -327,11 +340,13 @@ int main(int argc, const char* argv[]) {
   // P2_W = T_WwrtW * P1_W
   // P1_W = (T_WwrtW)^-1 * P2_W
   // P0_C = T_wrtC * (T_WwrtW)^-1 * P2_W      -- pose for P2_W
-  Mat newTrfForPose = Mat::zeros(4,4,CV_64FC1);
-  matRt.copyTo(newTrfForPose(Rect(0,0,4,3)));
-  newTrfForPose.at<double>(3,3) = 1;
-  cout << "pose0 -- Rt from T_WwrtC: " << newTrfForPose << endl;
+  Mat matPose_new = Mat::zeros(4,4,CV_64FC1);
+  matRt.copyTo(matPose_new(Rect(0,0,4,3)));
+  matPose_new.at<double>(3,3) = 1;
+  cout << "pose0 -- Rt from T_WwrtC: " << matPose_new << endl;
 
+  Mat matPose_old = matPose_new.clone();
+  Mat matT_WwrtW_cur;
   for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
   {
       Mat matTrf = vMatTrfs[iTrfIdx];
@@ -340,17 +355,26 @@ int main(int argc, const char* argv[]) {
       {
         // Here, initializing tx, ty, Rz to 0, 
         // considering identity for rotation matrix and zero vector for translation matrix
-        newTrfForPose = newTrfForPose;
+        matPose_new = matPose_new;
       }
       else
-        newTrfForPose = newTrfForPose * matTrf;
+        matPose_new = matPose_new * matTrf;
+
+      cout << "iTrfIdx: " << iTrfIdx << endl << "matTrf: " << endl << matTrf << endl;
+
+      // Recovering matTrf
+      matT_WwrtW_cur = matPose_old.inv() * matPose_new;
+      matPose_new.copyTo(matPose_old);
+
+      cout << iTrfIdx << ": matT_WwrtW_cur: " << matT_WwrtW_cur << endl;
+
       if(bDebug)
       {
         cout << "matTrf: " << endl << matTrf << endl;
-        cout << "newTrfForPose: " << endl << newTrfForPose << endl;
+        cout << "matPose_new: " << endl << matPose_new << endl;
       }
       g2o::SE3Quat pose;
-      getPoseFromTrfMat(newTrfForPose, pose, bDebug);
+      getPoseFromTrfMat(matPose_new, pose, bDebug);
       g2o::VertexSE3Expmap* v_se3 = new g2o::VertexSE3Expmap();
       v_se3->setId(vertex_id);
       if(iTrfIdx < 1)
@@ -421,6 +445,7 @@ int main(int argc, const char* argv[]) {
     }
 
     // Considering those points which are inliers or those which are within the image dimensions
+    cout << "num_obs for " << i << ": " << num_obs << endl;
     if (num_obs >= 2) {
       optimizer.addVertex(v_p);
       Vector2d ptI_gt = v2dObservations[i];
@@ -467,6 +492,8 @@ int main(int argc, const char* argv[]) {
         // Get projection of all ptW for the poses
         for (size_t j = 0; j < true_poses.size(); ++j) 
         {          
+          int iObsIdx = i + j * iNumPtsPerPolygon;
+          Vector2d ptI_gt = v2dObservations[iObsIdx];
           // Get the 3D point
           g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(j);
           if (v_it == optimizer.vertices().end()) {
@@ -478,7 +505,7 @@ int main(int argc, const char* argv[]) {
           Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
           Vector2d diffI_gt = ptI_gt - ptI_reproj;
           sum_diff2_I_gt = diffI_gt.dot(diffI_gt);
-          if(bDebug)
+          if(true)//bDebug)
           {
             cout << endl << "point index i: " << i << endl;
             cout << "pose index j: " << j << endl;
@@ -538,12 +565,14 @@ int main(int argc, const char* argv[]) {
 
   // Time the optimization
   auto t = cTimer{__FUNCTION__};
-  optimizer.optimize(iNumIterations, false);
+  // optimizer.optimize(iNumIterations, false);
   double dTimeNs = t.time_ns();
   //////////////////////////////////////////////////////////////
 
-  if(bDebug)
+  if(true)
   {
+    Mat matT_WwrtW;
+    Mat matRt;
     for(int i = 0; i < (int)true_poses.size(); i++)
     {
       g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
@@ -553,7 +582,28 @@ int main(int argc, const char* argv[]) {
                 exit(-1);
       }
       g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
-      cout << v_pose->estimate() << endl;
+      
+      Eigen::Isometry3d poseOpt = v_pose->estimate();
+      if(bDebug)
+      {
+        cout << "translation: " << endl << v_pose->estimate().translation() << endl;
+        cout << "toMinimalVector: " << v_pose->estimate().toMinimalVector() << endl;      
+        cout << "Pose=" << endl << poseOpt.matrix() <<endl;
+        for(int i = 0; i < 16; i ++)   // Traversal is column-wise
+          cout << "Pose[" << i << "]=" << endl << poseOpt.matrix()(i) <<endl;
+      }
+
+      // ToDo: Extract T_W_wrtW to compare with GT in input YML file      
+      Mat matPoseOpt(4,4,CV_64FC1);
+      getMat(poseOpt.matrix(), matPoseOpt);
+      if(i==0) matRt = matPoseOpt.clone();
+      else
+      {
+        if(matT_WwrtW.data)
+          matT_WwrtW = (matRt * matT_WwrtW).inv() * matPoseOpt; 
+        else matT_WwrtW = matRt.inv() * matPoseOpt; 
+      }
+      if(matT_WwrtW.data) cout <<  "matT_WwrtW " << i << endl << matT_WwrtW << endl;
     }
   }
 
@@ -655,6 +705,7 @@ int main(int argc, const char* argv[]) {
     }
     ++point_num;
   }
+  
   cout << endl <<  "Point error after optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
   cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_gt): "
