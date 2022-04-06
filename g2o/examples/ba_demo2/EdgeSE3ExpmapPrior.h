@@ -40,6 +40,8 @@ typedef Eigen::Matrix<double, 6,6> Matrix6d;
 g2o::SE3Quat toSE3Quat(const cv::Mat &cvT);
 Matrix6d toMatrix6d(const cv::Mat &cvMat6d);
 cv::Mat toCvMat(const g2o::Isometry3 &t);
+cv::Mat toCvMat(const g2o::SE3Quat &SE3);
+cv::Mat toCvMat(const Eigen::Matrix<double,4,4> &m);
 Eigen::Matrix<double,3,3> toMatrix3d(const cv::Mat &cvMat3);
 
 ////////////////////////////////////////////////////////////

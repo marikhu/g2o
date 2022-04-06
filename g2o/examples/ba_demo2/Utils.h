@@ -134,7 +134,7 @@ void getPoseFromTrfMat(Mat matTrf, g2o::SE3Quat &pose, bool bDebug = false)
 
 void getMat(Eigen::Matrix4d pose, Mat &matPose, bool bDebug = false)
 {
-  for(int i =0; i < 4; i++)
+  for(int i = 0; i < 4; i++)
     for(int j = 0; j < 4; j++)
       matPose.at<double>(i,j) = pose(i, j);
 

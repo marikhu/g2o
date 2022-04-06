@@ -66,7 +66,25 @@ Matrix6d toMatrix6d(const cv::Mat &cvMat6d)
 
 cv::Mat toCvMat(const g2o::Isometry3 &t)
 {
+    std::cout << "g2o::internal::toSE3Quat(t): " << g2o::internal::toSE3Quat(t) << std::endl;
     return toCvMat(g2o::internal::toSE3Quat(t));
+}
+
+cv::Mat toCvMat(const g2o::SE3Quat &SE3)
+{
+    Eigen::Matrix<double,4,4> eigMat = SE3.to_homogeneous_matrix();
+    return toCvMat(eigMat);
+}
+
+
+cv::Mat toCvMat(const Eigen::Matrix<double,4,4> &m)
+{
+    cv::Mat cvMat(4,4,CV_32FC1);
+    for(int i=0;i<4;i++)
+        for(int j=0; j<4; j++)
+            cvMat.at<float>(i,j)=m(i,j);
+
+    return cvMat.clone();
 }
 
 Eigen::Matrix<double,3,3> toMatrix3d(const cv::Mat &cvMat3)
@@ -87,13 +105,18 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
 #define USE_EULER
 
 #ifdef USE_EULER
-    const cv::Mat bTc = matRt;
-    const cv::Mat cTb = bTc.inv(); //cv::inv(bTc);
+    const cv::Mat bTc = matRt;  // T_WwrtC
+    const cv::Mat cTb = bTc.inv(); // T_CwrtW
 
-    cv::Mat Tcw = toCvMat(pose);
+    std::cout << "pose:" << std::endl << pose << std::endl;
+
+    cv::Mat Tcw = toCvMat(pose);    // T WwrtC pose
+    std::cout << "Tcw: " << Tcw << std::endl;
+    
     cv::Mat Tbw = bTc * Tcw;
     g2o::Vector3 euler = g2o::internal::toEuler( toMatrix3d(Tbw.rowRange(0,3).colRange(0,3)) );
     float yaw = euler(2);
+    std::cout << "yaw: " << yaw << std::endl;
 
     // Fix pitch and raw to zero, only yaw remains
     cv::Mat Rbw = (cv::Mat_<float>(3,3) <<
@@ -112,6 +135,7 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Info_bw(3,3) = 1e-4;
     Info_bw(4,4) = 1e-4;
     Info_bw(5,5) = 1;
+    std::cout << "Info_bw: " << Info_bw << std::endl;
     Matrix6d J_bb_cc = toSE3Quat(bTc).adj();
     Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
 #else
@@ -125,21 +149,25 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Tbw.setRotation(Eigen::Quaterniond(AngleAxis_bw));
 
     Eigen::Vector3d xyz_bw = Tbw.translation();
-    xyz_bw[2] = 0;
+    xyz_bw[2] = 0;  // tz
     Tbw.setTranslation(xyz_bw);
 
     g2o::SE3Quat Tcw = Tbc.inverse() * Tbw;
 
     //! Vector order: [rot, trans]
     Matrix6d Info_bw = Matrix6d::Zero();
-    Info_bw(0,0) = 1e6;
-    Info_bw(1,1) = 1e6;
-    Info_bw(2,2) = 1e-4;
-    Info_bw(3,3) = 1e-4;
-    Info_bw(4,4) = 1e-4;
-    Info_bw(5,5) = 1;
+    // Information is Hessian matrix, i.e. inverse of covariance matrix
+    Info_bw(0,0) = 1e6;     // Rx
+    Info_bw(1,1) = 1e6;     // Ry
+    Info_bw(2,2) = 1e-4;    // Rz    
+    Info_bw(3,3) = 1e-4;    // tx    
+    Info_bw(4,4) = 1e-4;    // ty
+    Info_bw(5,5) = 1;       // tz
     Matrix6d J_bb_cc = Tbc.adj();
     Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
+    std::cout << "Info_bw: " << Info_bw << std::endl;
+    std::cout << "J_bb_cc: " << J_bb_cc << std::endl;
+    std::cout << "Info_cw: " << Info_cw << std::endl;
 #endif
 
     // Make sure the infor matrix is symmetric

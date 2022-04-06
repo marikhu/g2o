@@ -146,6 +146,7 @@ int main(int argc, const char* argv[]) {
   float fGaussNoiseStdDev = 3.0; //3.0; //3.0f;
   bool bSetObservationsExplicitly = true;
   bool bInitTrfWtoWAsUnknown = true;
+  bool bEnableSE2constrainedSE3poses = false;
 
   // Load data
   DataReader *pDataReader = new DataReader();
@@ -228,6 +229,14 @@ int main(int argc, const char* argv[]) {
   cout << "pose0 -- Rt from T_WwrtC: " << matPose_new << endl;
 
   Mat matPose_old = matPose_new.clone();
+  Mat matT_Rt(4,4,CV_32FC1);
+  for(int iRow = 0; iRow <  (int)matPose_new.rows; iRow++)
+  {
+    for(int iCol = 0; iCol <  (int)matPose_new.cols; iCol++)
+    {
+      matT_Rt.at<float>(iRow, iCol) = matPose_new.at<double>(iRow, iCol);
+    }
+  }
   Mat matT_WwrtW_cur;
   for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
   {
@@ -273,6 +282,13 @@ int main(int argc, const char* argv[]) {
       v_se3->setEstimate(pose);
       optimizer.addVertex(v_se3);
       true_poses.push_back(pose);
+
+      // Adding a unary edge to the pose vertex that will enforece SE(2) constrained SE(3) poses
+
+
+      if(bEnableSE2constrainedSE3poses) addPlaneMotionSE3Expmap(optimizer, pose, vertex_id, matT_Rt);
+      //addPlaneMotionSE3Expmap(optimizer, toSE3Quat(matPose_new), vertex_id, matT_Rt);
+
       vertex_id++;
   }
 
