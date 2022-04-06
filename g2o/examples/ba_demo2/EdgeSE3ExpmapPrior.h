@@ -34,7 +34,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 using namespace cv;
 
-//#include "dep.h"
+////////////////////////////////////////////////////////////
 
 typedef Eigen::Matrix<double, 6,6> Matrix6d;
 g2o::SE3Quat toSE3Quat(const cv::Mat &cvT);
@@ -63,6 +63,6 @@ public:
 
 
 EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
-    g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &extPara);
+    g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matRt);
 
 #endif // EDGESE3EXPMAPPRIOR_H_
