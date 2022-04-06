@@ -25,12 +25,14 @@ include_directories(ba_demo
   ${EIGEN3_INCLUDE_DIR}
   ${OpenCV_INCLUDE_DIRS}
   ${LIBAVL_INCLUDE_DIR}
+  /usr/include/suitesparse
   )
 
 
 add_executable(ba_demo
   ba_demo.cpp
   DataReader.cpp
+  EdgeSE3ExpmapPrior.cpp
 )
 
 link_directories(/usr/local/lib)
