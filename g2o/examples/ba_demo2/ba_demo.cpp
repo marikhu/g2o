@@ -250,6 +250,7 @@ int main(int argc, const char* argv[]) {
   optimizer.setAlgorithm(
       g2o::OptimizationAlgorithmFactory::instance()->construct(solverName,
                                                               solverProperty));
+  optimizer.setVerbose(true);                                                              
 
   /////////////////////////////////////////////////////////////////////////////                                                                  
   
@@ -257,13 +258,13 @@ int main(int argc, const char* argv[]) {
   // Config
   /////////////
   bool bDebug = false;
-  int iNumPolygonsToConsider = 3; // If 0, all polygons are considered
+  int iNumPolygonsToConsider = 9; // If 0, all polygons are considered
   int iNumIterations = 10;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
-  float fGaussNoiseStdDev = 0.0; //3.0f;
-  bool bSetObservationsExplicitly = false;//true;
-  bool bInitTrfWtoWAsUnknown = false;//true;
+  float fGaussNoiseStdDev = 0.0; //3.0; //3.0f;
+  bool bSetObservationsExplicitly = true;
+  bool bInitTrfWtoWAsUnknown = true;
 
   // Load data
   DataReader *pDataReader = new DataReader();
@@ -359,6 +360,13 @@ int main(int argc, const char* argv[]) {
       }
       else
         matPose_new = matPose_new * matTrf;
+
+    //  matPose_new.at<double>(0,0) += g2o::Sampler::gaussRand(0., 0.1);
+    //  matPose_new.at<double>(1,1) += g2o::Sampler::gaussRand(0., 0.1);
+    //  matPose_new.at<double>(2,2) += g2o::Sampler::gaussRand(0., 0.1);
+    //  matPose_new.at<double>(0,3) += g2o::Sampler::gaussRand(0., 0.2);
+    //  matPose_new.at<double>(1,3) += g2o::Sampler::gaussRand(0., 0.2);
+    //  matPose_new.at<double>(3,3) += g2o::Sampler::gaussRand(0., 0.2);
 
       cout << "iTrfIdx: " << iTrfIdx << endl << "matTrf: " << endl << matTrf << endl;
 
@@ -505,7 +513,7 @@ int main(int argc, const char* argv[]) {
           Vector2d ptI_reproj = cam_params->cam_map(v_pose->estimate().map(v_p->estimate()));
           Vector2d diffI_gt = ptI_gt - ptI_reproj;
           sum_diff2_I_gt = diffI_gt.dot(diffI_gt);
-          if(true)//bDebug)
+          if(bDebug)
           {
             cout << endl << "point index i: " << i << endl;
             cout << "pose index j: " << j << endl;
@@ -565,14 +573,14 @@ int main(int argc, const char* argv[]) {
 
   // Time the optimization
   auto t = cTimer{__FUNCTION__};
-  // optimizer.optimize(iNumIterations, false);
+  optimizer.optimize(iNumIterations, false);
   double dTimeNs = t.time_ns();
   //////////////////////////////////////////////////////////////
 
   if(true)
   {
-    Mat matT_WwrtW;
-    Mat matRt;
+    Mat matT_WwrtW_cur;
+    Mat matPose_old;
     for(int i = 0; i < (int)true_poses.size(); i++)
     {
       g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
@@ -596,14 +604,26 @@ int main(int argc, const char* argv[]) {
       // ToDo: Extract T_W_wrtW to compare with GT in input YML file      
       Mat matPoseOpt(4,4,CV_64FC1);
       getMat(poseOpt.matrix(), matPoseOpt);
-      if(i==0) matRt = matPoseOpt.clone();
+      if(i==0) matPose_old = matPoseOpt.clone();
       else
+        matT_WwrtW_cur = matPose_old.inv() * matPoseOpt; 
+        matPoseOpt.copyTo(matPose_old);
+      if(matT_WwrtW_cur.data)
       {
-        if(matT_WwrtW.data)
-          matT_WwrtW = (matRt * matT_WwrtW).inv() * matPoseOpt; 
-        else matT_WwrtW = matRt.inv() * matPoseOpt; 
+        cout <<  "matT_WwrtW_cur " << i << endl << matT_WwrtW_cur << endl;
+        // Obtain tx, ty, Rz, 
+        double tx = matT_WwrtW_cur.at<double>(0,3);
+        double ty = matT_WwrtW_cur.at<double>(1,3);
+        double tz = matT_WwrtW_cur.at<double>(2,3);
+        Mat matR(3,3,CV_64FC1);
+        matT_WwrtW_cur(Rect(0,0,3,3)).copyTo(matR);
+        Mat matR_Euler(1,3,CV_64FC1);
+        cv::Rodrigues(matR, matR_Euler);
+        cout << "matR_Euler: " << endl << matR_Euler << endl;
+        matR_Euler = matR_Euler * 180 / CV_PI;
+        cout << "matR_Euler (deg): " << endl << matR_Euler << endl;
+        cout << "tx: " << tx << ", ty: " << ty << ", tz: " << tz << endl;
       }
-      if(matT_WwrtW.data) cout <<  "matT_WwrtW " << i << endl << matT_WwrtW << endl;
     }
   }
 
