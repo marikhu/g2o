@@ -64,19 +64,35 @@ Matrix6d toMatrix6d(const cv::Mat &cvMat6d)
 }
 
 
+cv::Mat toCvMat(const g2o::Isometry3 &t)
+{
+    return toCvMat(g2o::internal::toSE3Quat(t));
+}
+
+Eigen::Matrix<double,3,3> toMatrix3d(const cv::Mat &cvMat3)
+{
+    Eigen::Matrix<double,3,3> M;
+
+    M << cvMat3.at<float>(0,0), cvMat3.at<float>(0,1), cvMat3.at<float>(0,2),
+         cvMat3.at<float>(1,0), cvMat3.at<float>(1,1), cvMat3.at<float>(1,2),
+         cvMat3.at<float>(2,0), cvMat3.at<float>(2,1), cvMat3.at<float>(2,2);
+
+    return M;
+}
+
 EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
-    g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &extPara)
+    g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matRt)
 {
 
-//#define USE_EULER
+#define USE_EULER
 
 #ifdef USE_EULER
-    const cv::Mat bTc = extPara;
-    const cv::Mat cTb = scv::inv(bTc);
+    const cv::Mat bTc = matRt;
+    const cv::Mat cTb = bTc.inv(); //cv::inv(bTc);
 
     cv::Mat Tcw = toCvMat(pose);
     cv::Mat Tbw = bTc * Tcw;
-    g2o::Vector3D euler = g2o::internal::toEuler( toMatrix3d(Tbw.rowRange(0,3).colRange(0,3)) );
+    g2o::Vector3 euler = g2o::internal::toEuler( toMatrix3d(Tbw.rowRange(0,3).colRange(0,3)) );
     float yaw = euler(2);
 
     // Fix pitch and raw to zero, only yaw remains
@@ -90,17 +106,17 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Tcw = cTb * Tbw;
     //! Vector order: [rot, trans]
     Matrix6d Info_bw = Matrix6d::Zero();
-    Info_bw(0,0) = Config::PLANEMOTION_XROT_INFO;
-    Info_bw(1,1) = Config::PLANEMOTION_YROT_INFO;
+    Info_bw(0,0) = 1e6;
+    Info_bw(1,1) = 1e6;
     Info_bw(2,2) = 1e-4;
     Info_bw(3,3) = 1e-4;
     Info_bw(4,4) = 1e-4;
-    Info_bw(5,5) = Config::PLANEMOTION_Z_INFO;
+    Info_bw(5,5) = 1;
     Matrix6d J_bb_cc = toSE3Quat(bTc).adj();
     Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
 #else
 
-    g2o::SE3Quat Tbc = toSE3Quat(extPara);
+    g2o::SE3Quat Tbc = toSE3Quat(matRt);
     g2o::SE3Quat Tbw = Tbc * pose;
 
     Eigen::AngleAxisd AngleAxis_bw(Tbw.rotation());

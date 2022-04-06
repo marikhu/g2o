@@ -39,6 +39,11 @@ using namespace cv;
 typedef Eigen::Matrix<double, 6,6> Matrix6d;
 g2o::SE3Quat toSE3Quat(const cv::Mat &cvT);
 Matrix6d toMatrix6d(const cv::Mat &cvMat6d);
+cv::Mat toCvMat(const g2o::Isometry3 &t);
+Eigen::Matrix<double,3,3> toMatrix3d(const cv::Mat &cvMat3);
+
+////////////////////////////////////////////////////////////
+
 
 class G2O_TYPES_SBA_API EdgeSE3ExpmapPrior: public g2o::BaseUnaryEdge<6, g2o::SE3Quat, g2o::VertexSE3Expmap> {
 public:
@@ -59,5 +64,5 @@ public:
 
 EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &extPara);
-    
+
 #endif // EDGESE3EXPMAPPRIOR_H_
