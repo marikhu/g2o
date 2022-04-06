@@ -262,7 +262,7 @@ int main(int argc, const char* argv[]) {
   int iNumIterations = 10;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
-  float fGaussNoiseStdDev = 0.0; //3.0; //3.0f;
+  float fGaussNoiseStdDev = 3.0; //3.0; //3.0f;
   bool bSetObservationsExplicitly = true;
   bool bInitTrfWtoWAsUnknown = true;
 
