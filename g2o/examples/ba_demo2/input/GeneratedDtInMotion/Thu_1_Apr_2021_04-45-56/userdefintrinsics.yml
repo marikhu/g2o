@@ -1,0 +1,14 @@
+%YAML:1.0
+---
+Date: "2021-04-01 04:45:56"
+camera_matrix: !!opencv-matrix
+   rows: 3
+   cols: 3
+   dt: d
+   data: [ 5.4670193415190961e+03, 0., 9.6050000000000000e+02, 0.,
+       5.4670193415190961e+03, 5.4050000000000000e+02, 0., 0., 1. ]
+distortion_coefficients: !!opencv-matrix
+   rows: 5
+   cols: 1
+   dt: d
+   data: [ 0., 0., 0., 0., 0. ]

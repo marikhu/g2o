@@ -1,0 +1,12 @@
+%YAML:1.0
+---
+PtsOnImage: !!opencv-matrix
+   rows: 4
+   cols: 2
+   dt: f
+   data: [ 0., 0., 0., 0., 0., 0., 0., 0. ]
+PtsOnGround: !!opencv-matrix
+   rows: 4
+   cols: 2
+   dt: f
+   data: [ 0., 0., 0., 0., 0., 0., 0., 0. ]
