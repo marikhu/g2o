@@ -144,7 +144,7 @@ int main(int argc, const char* argv[]) {
   int iImgWidth = 3000;
   int iImgHeight = 2000;
   float fGaussNoiseStdDev = 3.0; //3.0; //3.0f;
-  bool bSetObservationsExplicitly = true;
+  bool bSetObservationsExplicitly = true; // This will include PIXEL_NOISE specified via program argument
   bool bInitTrfWtoWAsUnknown = true;
   bool bEnableSE2constrainedSE3poses = true;
 
