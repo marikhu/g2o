@@ -178,33 +178,33 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Matrix6d Info_cw = J_ww_cc.transpose() * Info_ww * J_ww_cc;
 #else
 
-    g2o::SE3Quat Tbc = toSE3Quat(matT_CwrtW_init_fixed.inv());
-    g2o::SE3Quat Tbw = Tbc * pose;
+    g2o::SE3Quat Twc_fixed = toSE3Quat(matT_CwrtW_init_fixed);
+    g2o::SE3Quat Tww = Twc_fixed * pose;
 
-    Eigen::AngleAxisd AngleAxis_bw(Tbw.rotation());
-    Eigen::Vector3d Log_Rbw = AngleAxis_bw.angle() * AngleAxis_bw.axis();
-    AngleAxis_bw = Eigen::AngleAxisd(Log_Rbw[2], Eigen::Vector3d::UnitZ());
-    Tbw.setRotation(Eigen::Quaterniond(AngleAxis_bw));
+    Eigen::AngleAxisd AngleAxis_ww(Tww.rotation());
+    Eigen::Vector3d Log_Rww = AngleAxis_ww.angle() * AngleAxis_ww.axis();
+    AngleAxis_ww = Eigen::AngleAxisd(Log_Rww[2], Eigen::Vector3d::UnitZ());
+    Tww.setRotation(Eigen::Quaterniond(AngleAxis_ww));
 
-    Eigen::Vector3d xyz_bw = Tbw.translation();
-    xyz_bw[2] = 0;  // tz
-    Tbw.setTranslation(xyz_bw);
+    Eigen::Vector3d xyz_ww = Tww.translation();
+    xyz_ww[2] = 0;  // tz
+    Tww.setTranslation(xyz_ww);
 
-    g2o::SE3Quat Tcw = Tbc.inverse() * Tbw;
+    g2o::SE3Quat Tcw = Twc_fixed.inverse() * Tww;
 
     //! Vector order: [rot, trans]
-    Matrix6d Info_bw = Matrix6d::Zero();
+    Matrix6d Info_ww = Matrix6d::Zero();
     // Information is Hessian matrix, i.e. inverse of covariance matrix
-    Info_bw(0,0) = 1e6;     // Rx
-    Info_bw(1,1) = 1e6;     // Ry
-    Info_bw(2,2) = 1e-4;    // Rz    
-    Info_bw(3,3) = 1e-4;    // tx    
-    Info_bw(4,4) = 1e-4;    // ty
-    Info_bw(5,5) = 1;       // tz
-    Matrix6d J_bb_cc = Tbc.adj();
-    Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
-    std::cout << "Info_bw: " << Info_bw << std::endl;
-    std::cout << "J_bb_cc: " << J_bb_cc << std::endl;
+    Info_ww(0,0) = 1e6;     // Rx
+    Info_ww(1,1) = 1e6;     // Ry
+    Info_ww(2,2) = 1e-4;    // Rz    
+    Info_ww(3,3) = 1e-4;    // tx    
+    Info_ww(4,4) = 1e-4;    // ty
+    Info_ww(5,5) = 1;       // tz
+    Matrix6d J_ww_cc = Twc_fixed.adj();
+    Matrix6d Info_cw = J_ww_cc.transpose() * Info_ww * J_ww_cc;
+    std::cout << "Info_ww: " << Info_ww << std::endl;
+    std::cout << "J_ww_cc: " << J_ww_cc << std::endl;
     std::cout << "Info_cw: " << Info_cw << std::endl;
 #endif
 

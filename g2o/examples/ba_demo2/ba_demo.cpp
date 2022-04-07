@@ -139,7 +139,7 @@ int main(int argc, const char* argv[]) {
   // Config
   /////////////
   bool bDebug = false;
-  int iNumPolygonsToConsider = 9; // If 0, all polygons are considered
+  int iNumPolygonsToConsider = 0; // If 0, all polygons are considered
   int iNumIterations = 10;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
