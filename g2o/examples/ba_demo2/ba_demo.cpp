@@ -145,7 +145,7 @@ int main(int argc, const char* argv[]) {
   int iImgHeight = 2000;
   float fGaussNoiseStdDev = 3.0; //3.0; //3.0f;
   bool bSetObservationsExplicitly = true;
-  bool bInitTrfWtoWAsUnknown = false;
+  bool bInitTrfWtoWAsUnknown = true;
   bool bEnableSE2constrainedSE3poses = true;
 
   // Load data
@@ -229,6 +229,7 @@ int main(int argc, const char* argv[]) {
   cout << "pose0 -- Rt from T_WwrtC: " << matPose_new << endl;
   Mat matT_CwrtW_init_fixed = matPose_new.inv();
 
+  // Alternatively, using toCvMat to convert from pose to Transformation matrix
   cv::Mat Tcw = toCvMat(pose0);
   cout << "Tcw from pose0: " << Tcw << endl;
 
@@ -628,7 +629,8 @@ int main(int argc, const char* argv[]) {
   cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_gt): "
       << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
   cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_meas): "
-      << sqrt(sum_diff2_I_meas / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
+      << sqrt(sum_diff2_I_meas / ((int)inliers.size() * iNumPolygonsToConsider)) 
+      << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
   cout << endl;
 
   cout << "# of inliers: " << (int)inliers.size() << endl;

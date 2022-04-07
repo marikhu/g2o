@@ -13,7 +13,7 @@ void EdgeSE3ExpmapPrior::computeError(){
 //    SE3Quat err = _measurementInverse * v->estimate();
 //    Eigen::AngleAxisd err_angleaxis(err.rotation());
 //    _error.head<3>() = err_angleaxis.angle() * err_angleaxis.axis();
-    _error = err.log();
+    _error = err.log();  // transform into trf mat -- Lie algebra 
 //    _error.tail<3>() = err.translation();
 }
 
@@ -115,26 +115,27 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
 #define USE_EULER
 
 #ifdef USE_EULER
-    const cv::Mat bTc = matT_CwrtW_init_fixed;  // T_WwrtC, pose0
-    const cv::Mat cTb = bTc.inv(); // T_CwrtW, in order to work on T_WwrtW where constraints are to be enforced.
+    const cv::Mat Twc_fixed = matT_CwrtW_init_fixed;  // T_CwrtW = (pose0)^-1  = (T_WwrtC)^-1
+    const cv::Mat Tcw_fixed = Twc_fixed.inv(); // T_CwrtW, in order to work on T_WwrtW where constraints are to be enforced.
 
     if(bDebug)
     {
-        std::cout << "bTc = matT_CwrtW_init_fixed:" << std::endl << matT_CwrtW_init_fixed << std::endl;
-        std::cout << "cTb = bTc.inv():" << std::endl << cTb << std::endl;
+        std::cout << "Twc_fixed = matT_CwrtW_init_fixed:" << std::endl << Twc_fixed << std::endl;
+        std::cout << "Tcw_fixed = bTc.inv():" << std::endl << Tcw_fixed << std::endl;
     }
 
     cv::Mat Tcw = toCvMat(pose);    // T WwrtC pose_i
     std::cout << "Tcw = toCvMat(pose): " << Tcw << std::endl;
     
-    std::cout << "bTc.type: " << bTc.type() << std::endl;
+    std::cout << "Twc_fixed.type: " << Twc_fixed.type() << std::endl;
     std::cout << "Tcw.type: " << Tcw.type() << std::endl;
-    cv::Mat Tbw = bTc * Tcw;
-    std::cout << "Tbw.type: " << Tbw.type() << std::endl;
-    std::cout << "Tbw = bTc * Tcw: " << Tbw << std::endl;
+    cv::Mat Tww = Twc_fixed * Tcw;  // This is the transformation of the 3D points in world frame
+    // Here, Tww is where we enforce the SE2 constraints
+    std::cout << "Tww.type: " << Tww.type() << std::endl;
+    std::cout << "Tww = Twc_fixed * Tcw: " << Tww << std::endl;
 
     Mat matR(3,3,CV_64FC1);
-    Tbw(Rect(0,0,3,3)).copyTo(matR);
+    Tww(Rect(0,0,3,3)).copyTo(matR);
     // NOTE:  Tbw.rowRange(0,3).colRange(0,3) returns a matrix of type CV_32FC1
     // g2o::Vector3 euler = g2o::internal::toEuler(toMatrix3d(Tbw.rowRange(0,3).colRange(0,3)));
     // std::cout << "matR: " << matR << std::endl;
@@ -145,32 +146,36 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     double yaw = euler(2);
     std::cout << "yaw: " << yaw << std::endl;
 
-    // Fix pitch and raw to zero, only yaw remains
-    cv::Mat Rbw = (cv::Mat_<double>(3,3) <<
+    // In world frame, fix pitch (Rx) and roll (Ry) to zero. Considering yaw (Rz) only 
+    cv::Mat Rww = (cv::Mat_<double>(3,3) <<
                    cos(yaw), -sin(yaw), 0,
                    sin(yaw),  cos(yaw), 0,
                    0,         0,        1);
-    std::cout << "Rbw: " << Rbw << std::endl;
-    //Rbw.copyTo(Tbw.rowRange(0,3).colRange(0,3));
-    Rbw.copyTo(Tbw(Rect(0,0,3,3)));
-    //Tbw.at<double>(2,3) = 0; // Fix the height to zero
-    std::cout << "Tbw: " << Tbw << std::endl;
+    std::cout << "Rww: " << Rww << std::endl;
+    Rww.copyTo(Tww(Rect(0,0,3,3)));
+    Tww.at<double>(2,3) = 0; // Fix tz to 0
+    std::cout << "Tww constrained: " << Tww << std::endl;
 
-    Tcw = cTb * Tbw;
-    std::cout << "Tcw = cTb * Tbw: " << Tcw << std::endl;
+    // After constraining Tww, we get Tcw close to what we expect, hence it is measurement      
+    Tcw = Tcw_fixed * Tww;  
+    std::cout << "Tcw = Tcw_fixed * Tww: " << Tcw << std::endl;
 
-    //! Vector order: [rot, trans]
-    Matrix6d Info_bw = Matrix6d::Zero();
-    Info_bw(0,0) = 1e6;
-    Info_bw(1,1) = 1e6;
-    Info_bw(2,2) = 1e-4;
-    Info_bw(3,3) = 1e-4;
-    Info_bw(4,4) = 1e-4;
-    Info_bw(5,5) = 1;
-    std::cout << "Info_bw: " << Info_bw << std::endl;
-    Matrix6d J_bb_cc = toSE3Quat(bTc).adj();
-    // Transfer of covariance thing
-    Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
+    //! Vector order: [rot, trans] == Rx, Ry, Rz, tx, ty, tz
+    // Info_ww = Hessian matrix, i.e. the inverse of covariance matrix (uncertainty)
+    // High values for sigma_Rx*sigma_Rx means low variance for Rx
+    // Low values for sigma_tx*sigma_tx means high variance for tx
+    // 1 meter for sigma_tz*sigma_tz means some variation allowed for tz
+    Matrix6d Info_ww = Matrix6d::Zero();    // 6x6 matrix
+    Info_ww(0,0) = 1e6;
+    Info_ww(1,1) = 1e6;
+    Info_ww(2,2) = 1e-4;
+    Info_ww(3,3) = 1e-4;
+    Info_ww(4,4) = 1e-4;
+    Info_ww(5,5) = 1;   // Allowing some perturbations
+    std::cout << "Info_ww: " << Info_ww << std::endl;
+    Matrix6d J_ww_cc = toSE3Quat(Twc_fixed).adj();  // In our case, in world frame 
+    // Transfer of Hessian (inv covariance)
+    Matrix6d Info_cw = J_ww_cc.transpose() * Info_ww * J_ww_cc;
 #else
 
     g2o::SE3Quat Tbc = toSE3Quat(matT_CwrtW_init_fixed.inv());
