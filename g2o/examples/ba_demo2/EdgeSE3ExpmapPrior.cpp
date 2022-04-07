@@ -45,11 +45,11 @@ bool EdgeSE3ExpmapPrior::write(std::ostream &os) const{
 g2o::SE3Quat toSE3Quat(const cv::Mat &cvT)
 {
     Eigen::Matrix<double,3,3> R;
-    R << cvT.at<float>(0,0), cvT.at<float>(0,1), cvT.at<float>(0,2),
-            cvT.at<float>(1,0), cvT.at<float>(1,1), cvT.at<float>(1,2),
-            cvT.at<float>(2,0), cvT.at<float>(2,1), cvT.at<float>(2,2);
+    R << cvT.at<double>(0,0), cvT.at<double>(0,1), cvT.at<double>(0,2),
+            cvT.at<double>(1,0), cvT.at<double>(1,1), cvT.at<double>(1,2),
+            cvT.at<double>(2,0), cvT.at<double>(2,1), cvT.at<double>(2,2);
 
-    Eigen::Matrix<double,3,1> t(cvT.at<float>(0,3), cvT.at<float>(1,3), cvT.at<float>(2,3));
+    Eigen::Matrix<double,3,1> t(cvT.at<double>(0,3), cvT.at<double>(1,3), cvT.at<double>(2,3));
 
     return g2o::SE3Quat(R,t);
 }
@@ -59,7 +59,7 @@ Matrix6d toMatrix6d(const cv::Mat &cvMat6d)
     Matrix6d m = Matrix6d::Zero();
     for(int i = 0; i < 6; i++)
         for(int j = 0; j < 6; j++)
-            m(i,j) = cvMat6d.at<float>(i,j);
+            m(i,j) = cvMat6d.at<double>(i,j);
     return m;
 }
 
@@ -79,54 +79,86 @@ cv::Mat toCvMat(const g2o::SE3Quat &SE3)
 
 cv::Mat toCvMat(const Eigen::Matrix<double,4,4> &m)
 {
-    cv::Mat cvMat(4,4,CV_32FC1);
+    cv::Mat cvMat(4,4,CV_64FC1);
     for(int i=0;i<4;i++)
         for(int j=0; j<4; j++)
-            cvMat.at<float>(i,j)=m(i,j);
+            cvMat.at<double>(i,j)=m(i,j);
 
     return cvMat.clone();
 }
 
 Eigen::Matrix<double,3,3> toMatrix3d(const cv::Mat &cvMat3)
 {
+    // std::cout << "cvMat3: " << cvMat3 << std::endl;
+    // std::cout << "cvMat3.type(): " << cvMat3.type() << std::endl;
+    // std::cout << "cvMat3.at<double>(0,0): " << cvMat3.at<double>(0,0) << std::endl;
+    // std::cout << "cvMat3.at<float>(0,0): " << cvMat3.at<float>(0,0) << std::endl;
     Eigen::Matrix<double,3,3> M;
-
-    M << cvMat3.at<float>(0,0), cvMat3.at<float>(0,1), cvMat3.at<float>(0,2),
-         cvMat3.at<float>(1,0), cvMat3.at<float>(1,1), cvMat3.at<float>(1,2),
-         cvMat3.at<float>(2,0), cvMat3.at<float>(2,1), cvMat3.at<float>(2,2);
+    M << cvMat3.at<double>(0,0), cvMat3.at<double>(0,1), cvMat3.at<double>(0,2),
+         cvMat3.at<double>(1,0), cvMat3.at<double>(1,1), cvMat3.at<double>(1,2),
+         cvMat3.at<double>(2,0), cvMat3.at<double>(2,1), cvMat3.at<double>(2,2);
 
     return M;
 }
 
 EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
-    g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matRt)
+    g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matT_CwrtW_init_fixed, bool bDebug)
 {
+
+    // ToDo:
+    // Need to understand the frames 
+    // How to enforce roll and pitch to be 0 and allow for little perturbations in tz or set to 0 as well
+    // How to compute error.
+
+    // MAYBE check on Huber!!!
 
 #define USE_EULER
 
 #ifdef USE_EULER
-    const cv::Mat bTc = matRt;  // T_WwrtC
-    const cv::Mat cTb = bTc.inv(); // T_CwrtW
+    const cv::Mat bTc = matT_CwrtW_init_fixed;  // T_WwrtC, pose0
+    const cv::Mat cTb = bTc.inv(); // T_CwrtW, in order to work on T_WwrtW where constraints are to be enforced.
 
-    std::cout << "pose:" << std::endl << pose << std::endl;
+    if(bDebug)
+    {
+        std::cout << "bTc = matT_CwrtW_init_fixed:" << std::endl << matT_CwrtW_init_fixed << std::endl;
+        std::cout << "cTb = bTc.inv():" << std::endl << cTb << std::endl;
+    }
 
-    cv::Mat Tcw = toCvMat(pose);    // T WwrtC pose
-    std::cout << "Tcw: " << Tcw << std::endl;
+    cv::Mat Tcw = toCvMat(pose);    // T WwrtC pose_i
+    std::cout << "Tcw = toCvMat(pose): " << Tcw << std::endl;
     
+    std::cout << "bTc.type: " << bTc.type() << std::endl;
+    std::cout << "Tcw.type: " << Tcw.type() << std::endl;
     cv::Mat Tbw = bTc * Tcw;
-    g2o::Vector3 euler = g2o::internal::toEuler( toMatrix3d(Tbw.rowRange(0,3).colRange(0,3)) );
-    float yaw = euler(2);
+    std::cout << "Tbw.type: " << Tbw.type() << std::endl;
+    std::cout << "Tbw = bTc * Tcw: " << Tbw << std::endl;
+
+    Mat matR(3,3,CV_64FC1);
+    Tbw(Rect(0,0,3,3)).copyTo(matR);
+    // NOTE:  Tbw.rowRange(0,3).colRange(0,3) returns a matrix of type CV_32FC1
+    // g2o::Vector3 euler = g2o::internal::toEuler(toMatrix3d(Tbw.rowRange(0,3).colRange(0,3)));
+    // std::cout << "matR: " << matR << std::endl;
+    // std::cout << "matR.type(): " << matR.type() << std::endl;
+    // std::cout << "toMatrix3d(matR): " << toMatrix3d(matR) << std::endl;
+    g2o::Vector3 euler = g2o::internal::toEuler(toMatrix3d(matR));
+    std::cout << "euler: " << euler << std::endl;
+    double yaw = euler(2);
     std::cout << "yaw: " << yaw << std::endl;
 
     // Fix pitch and raw to zero, only yaw remains
-    cv::Mat Rbw = (cv::Mat_<float>(3,3) <<
+    cv::Mat Rbw = (cv::Mat_<double>(3,3) <<
                    cos(yaw), -sin(yaw), 0,
                    sin(yaw),  cos(yaw), 0,
                    0,         0,        1);
-    Rbw.copyTo(Tbw.rowRange(0,3).colRange(0,3));
-    Tbw.at<float>(2,3) = 0; // Fix the height to zero
+    std::cout << "Rbw: " << Rbw << std::endl;
+    //Rbw.copyTo(Tbw.rowRange(0,3).colRange(0,3));
+    Rbw.copyTo(Tbw(Rect(0,0,3,3)));
+    //Tbw.at<double>(2,3) = 0; // Fix the height to zero
+    std::cout << "Tbw: " << Tbw << std::endl;
 
     Tcw = cTb * Tbw;
+    std::cout << "Tcw = cTb * Tbw: " << Tcw << std::endl;
+
     //! Vector order: [rot, trans]
     Matrix6d Info_bw = Matrix6d::Zero();
     Info_bw(0,0) = 1e6;
@@ -137,10 +169,11 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Info_bw(5,5) = 1;
     std::cout << "Info_bw: " << Info_bw << std::endl;
     Matrix6d J_bb_cc = toSE3Quat(bTc).adj();
+    // Transfer of covariance thing
     Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
 #else
 
-    g2o::SE3Quat Tbc = toSE3Quat(matRt);
+    g2o::SE3Quat Tbc = toSE3Quat(matT_CwrtW_init_fixed.inv());
     g2o::SE3Quat Tbw = Tbc * pose;
 
     Eigen::AngleAxisd AngleAxis_bw(Tbw.rotation());
@@ -174,11 +207,13 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     for(int i = 0; i < 6; i++)
         for(int j = 0; j < i; j++)
             Info_cw(i,j) = Info_cw(j,i);
+    std::cout << "Info_cw: " << Info_cw << std::endl;
 
     EdgeSE3ExpmapPrior* planeConstraint = new EdgeSE3ExpmapPrior();
     planeConstraint->setInformation(Info_cw);
 #ifdef USE_EULER
     planeConstraint->setMeasurement(toSE3Quat(Tcw));
+    std::cout << "measurement toSE3Quat(Tcw): " << toSE3Quat(Tcw) << std::endl;
 #else
     planeConstraint->setMeasurement(Tcw);
 #endif
