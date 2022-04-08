@@ -5,15 +5,22 @@ EdgeSE3ExpmapPrior::EdgeSE3ExpmapPrior() : g2o::BaseUnaryEdge<6, g2o::SE3Quat, g
     information().setIdentity();
 }
 
+// Here, measurement = Tcw, also v->estimate is also Tcw
+// http://jamessjackson.com/lie_algebra_tutorial/08-computing_the_adjoint/
 void EdgeSE3ExpmapPrior::computeError(){
-    g2o::VertexSE3Expmap *v = static_cast<g2o::VertexSE3Expmap*>(_vertices[0]);
-    g2o::SE3Quat err = _measurement * v->estimate().inverse() ;
+    g2o::VertexSE3Expmap *v = static_cast<g2o::VertexSE3Expmap*>(_vertices[0]);  // Pose optimized, Tcw 
+    g2o::SE3Quat err = _measurement * v->estimate().inverse();  // _measurement is what was set, Tcw 
+    //std::cout << "_measurement: " << _measurement << std::endl;
+    //std::cout << "v->estimate(): " << v->estimate() << std::endl;
+    //std::cout << "v->estimate().inverse(): " << v->estimate().inverse() << std::endl;
+    //std::cout << "err = _measurement * v->estimate().inverse(): " << err << std::endl;
 //    _error = _measurement.log() - v->estimate().log();
 //    SE3Quat err = v->estimate().inverse() * _measurement;
 //    SE3Quat err = _measurementInverse * v->estimate();
 //    Eigen::AngleAxisd err_angleaxis(err.rotation());
 //    _error.head<3>() = err_angleaxis.angle() * err_angleaxis.axis();
-    _error = err.log();  // transform into trf mat -- Lie algebra 
+    _error = err.log();  // transform into trf mat -- Lie algebra, log(err)
+    //std::cout << "_error = err.log(): " <<_error << std::endl;
 //    _error.tail<3>() = err.translation();
 }
 
@@ -104,35 +111,15 @@ Eigen::Matrix<double,3,3> toMatrix3d(const cv::Mat &cvMat3)
 EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matT_CwrtW_init_fixed, bool bDebug)
 {
-
-    // ToDo:
-    // Need to understand the frames 
-    // How to enforce roll and pitch to be 0 and allow for little perturbations in tz or set to 0 as well
-    // How to compute error.
-
-    // MAYBE check on Huber!!!
-
 #define USE_EULER
 
 #ifdef USE_EULER
     const cv::Mat Twc_fixed = matT_CwrtW_init_fixed;  // T_CwrtW = (pose0)^-1  = (T_WwrtC)^-1
     const cv::Mat Tcw_fixed = Twc_fixed.inv(); // T_CwrtW, in order to work on T_WwrtW where constraints are to be enforced.
 
-    if(bDebug)
-    {
-        std::cout << "Twc_fixed = matT_CwrtW_init_fixed:" << std::endl << Twc_fixed << std::endl;
-        std::cout << "Tcw_fixed = bTc.inv():" << std::endl << Tcw_fixed << std::endl;
-    }
-
     cv::Mat Tcw = toCvMat(pose);    // T WwrtC pose_i
-    std::cout << "Tcw = toCvMat(pose): " << Tcw << std::endl;
-    
-    std::cout << "Twc_fixed.type: " << Twc_fixed.type() << std::endl;
-    std::cout << "Tcw.type: " << Tcw.type() << std::endl;
     cv::Mat Tww = Twc_fixed * Tcw;  // This is the transformation of the 3D points in world frame
     // Here, Tww is where we enforce the SE2 constraints
-    std::cout << "Tww.type: " << Tww.type() << std::endl;
-    std::cout << "Tww = Twc_fixed * Tcw: " << Tww << std::endl;
 
     Mat matR(3,3,CV_64FC1);
     Tww(Rect(0,0,3,3)).copyTo(matR);
@@ -142,24 +129,34 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     // std::cout << "matR.type(): " << matR.type() << std::endl;
     // std::cout << "toMatrix3d(matR): " << toMatrix3d(matR) << std::endl;
     g2o::Vector3 euler = g2o::internal::toEuler(toMatrix3d(matR));
-    std::cout << "euler: " << euler << std::endl;
     double yaw = euler(2);
-    std::cout << "yaw: " << yaw << std::endl;
 
     // In world frame, fix pitch (Rx) and roll (Ry) to zero. Considering yaw (Rz) only 
     cv::Mat Rww = (cv::Mat_<double>(3,3) <<
                    cos(yaw), -sin(yaw), 0,
                    sin(yaw),  cos(yaw), 0,
                    0,         0,        1);
-    std::cout << "Rww: " << Rww << std::endl;
     Rww.copyTo(Tww(Rect(0,0,3,3)));
     Tww.at<double>(2,3) = 0; // Fix tz to 0
+
+    if(bDebug)
+    {
+        std::cout << "Twc_fixed = matT_CwrtW_init_fixed:" << std::endl << Twc_fixed << std::endl;
+        std::cout << "Tcw_fixed = bTc.inv():" << std::endl << Tcw_fixed << std::endl;
+        std::cout << "Tcw = toCvMat(pose): " << Tcw << std::endl;
+        std::cout << "Twc_fixed.type: " << Twc_fixed.type() << std::endl;
+        std::cout << "Tcw.type: " << Tcw.type() << std::endl;
+        std::cout << "Tww.type: " << Tww.type() << std::endl;
+        std::cout << "Tww = Twc_fixed * Tcw: " << Tww << std::endl;
+        std::cout << "euler: " << euler << std::endl;
+        std::cout << "yaw: " << yaw << std::endl;
+        std::cout << "Rww: " << Rww << std::endl;
+    }
     std::cout << "Tww constrained: " << Tww << std::endl;
 
-    // After constraining Tww, we get Tcw close to what we expect, hence it is measurement      
+    // After constraining Tww, we update Tcw to what we expect, hence it is measurement      
     Tcw = Tcw_fixed * Tww;  
-    std::cout << "Tcw = Tcw_fixed * Tww: " << Tcw << std::endl;
-
+    
     //! Vector order: [rot, trans] == Rx, Ry, Rz, tx, ty, tz
     // Info_ww = Hessian matrix, i.e. the inverse of covariance matrix (uncertainty)
     // High values for sigma_Rx*sigma_Rx means low variance for Rx
@@ -172,10 +169,21 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Info_ww(3,3) = 1e-4;
     Info_ww(4,4) = 1e-4;
     Info_ww(5,5) = 1;   // Allowing some perturbations
+
     std::cout << "Info_ww: " << Info_ww << std::endl;
-    Matrix6d J_ww_cc = toSE3Quat(Twc_fixed).adj();  // In our case, in world frame 
-    // Transfer of Hessian (inv covariance)
-    Matrix6d Info_cw = J_ww_cc.transpose() * Info_ww * J_ww_cc;
+    std::cout << "Tcw = Tcw_fixed * Tww: " << Tcw << std::endl;
+
+    // Transfer of covariance (Hessian in this case)
+
+    std::cout << "Twc_fixed: " << std::endl << Twc_fixed << std::endl;
+    std::cout << "toSE3Quat(Twc_fixed): " << std::endl << toSE3Quat(Twc_fixed) << std::endl;
+    // Adjoint (Adjugate) matrix for SE(3) used as Jacobian matrix
+    std::cout << "toSE3Quat(Twc_fixed).adj(): " << std::endl << toSE3Quat(Twc_fixed).adj() << std::endl;
+    // Compute Jacobian of the Twc transformation
+    Matrix6d J_ww_cc = toSE3Quat(Twc_fixed).adj();  // Twc_fixed -- pose 0 inv --> Jacobian for camera to world
+    std::cout << "J_ww_cc: " << std::endl << J_ww_cc << std::endl;
+    Matrix6d Info_cc = J_ww_cc.transpose() * Info_ww * J_ww_cc;
+    std::cout << "Info_cc: " << std:: endl << Info_cc << std::endl;
 #else
 
     g2o::SE3Quat Twc_fixed = toSE3Quat(matT_CwrtW_init_fixed);
@@ -202,22 +210,22 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Info_ww(4,4) = 1e-4;    // ty
     Info_ww(5,5) = 1;       // tz
     Matrix6d J_ww_cc = Twc_fixed.adj();
-    Matrix6d Info_cw = J_ww_cc.transpose() * Info_ww * J_ww_cc;
+    Matrix6d Info_cc = J_ww_cc.transpose() * Info_ww * J_ww_cc;
     std::cout << "Info_ww: " << Info_ww << std::endl;
     std::cout << "J_ww_cc: " << J_ww_cc << std::endl;
-    std::cout << "Info_cw: " << Info_cw << std::endl;
+    std::cout << "Info_cc: " << Info_cc << std::endl;
 #endif
 
     // Make sure the infor matrix is symmetric
     for(int i = 0; i < 6; i++)
         for(int j = 0; j < i; j++)
-            Info_cw(i,j) = Info_cw(j,i);
-    std::cout << "Info_cw: " << Info_cw << std::endl;
+            Info_cc(i,j) = Info_cc(j,i);
 
     EdgeSE3ExpmapPrior* planeConstraint = new EdgeSE3ExpmapPrior();
-    planeConstraint->setInformation(Info_cw);
+    planeConstraint->setInformation(Info_cc);
 #ifdef USE_EULER
     planeConstraint->setMeasurement(toSE3Quat(Tcw));
+    std::cout << "Info_cc: " << Info_cc << std::endl;
     std::cout << "measurement toSE3Quat(Tcw): " << toSE3Quat(Tcw) << std::endl;
 #else
     planeConstraint->setMeasurement(Tcw);

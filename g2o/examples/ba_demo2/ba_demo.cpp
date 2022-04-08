@@ -139,7 +139,7 @@ int main(int argc, const char* argv[]) {
   // Config
   /////////////
   bool bDebug = false;
-  int iNumPolygonsToConsider = 0; // If 0, all polygons are considered
+  int iNumPolygonsToConsider = 9; // If 0, all polygons are considered
   int iNumIterations = 10;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
@@ -223,21 +223,21 @@ int main(int argc, const char* argv[]) {
   // P2_W = T_WwrtW * P1_W
   // P1_W = (T_WwrtW)^-1 * P2_W
   // P0_C = T_wrtC * (T_WwrtW)^-1 * P2_W      -- pose for P2_W
-  Mat matPose_new = Mat::zeros(4,4,CV_64FC1);
-  matRt.copyTo(matPose_new(Rect(0,0,4,3)));
-  matPose_new.at<double>(3,3) = 1;
-  cout << "pose0 -- Rt from T_WwrtC: " << matPose_new << endl;
-  Mat matT_CwrtW_init_fixed = matPose_new.inv();
+  Mat matPose_init = Mat::zeros(4,4,CV_64FC1);
+  matRt.copyTo(matPose_init(Rect(0,0,4,3)));
+  matPose_init.at<double>(3,3) = 1;
+  cout << "pose0 -- matPose_init -- Rt from T_WwrtC: " << matPose_init << endl;
+  Mat matT_CwrtW_init_fixed = matPose_init.inv();
 
   // Alternatively, using toCvMat to convert from pose to Transformation matrix
   cv::Mat Tcw = toCvMat(pose0);
   cout << "Tcw from pose0: " << Tcw << endl;
 
-  Mat matPose_old = matPose_new.clone();
+  Mat matPose_new = matPose_init.clone();
+  Mat matPose_old = matPose_init.clone();
   Mat matT_WwrtW_cur;
   for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
   {
-      Mat matTrf = vMatTrfs[iTrfIdx];
       // Now, we need Trf of new World frame wrt Cam frame
       if(bInitTrfWtoWAsUnknown)
       {
@@ -246,26 +246,19 @@ int main(int argc, const char* argv[]) {
         matPose_new = matPose_new;
       }
       else
-        matPose_new = matPose_new * matTrf;
+      {
+        Mat matTww_gt = vMatTrfs[iTrfIdx];
+        matPose_new = matPose_old * matTww_gt;
+        cout << "iTrfIdx: " << iTrfIdx << endl << "matTww_gt: " << endl << matTww_gt << endl;
+      }
 
-    //  matPose_new.at<double>(0,0) += g2o::Sampler::gaussRand(0., 0.1);
-    //  matPose_new.at<double>(1,1) += g2o::Sampler::gaussRand(0., 0.1);
-    //  matPose_new.at<double>(2,2) += g2o::Sampler::gaussRand(0., 0.1);
-    //  matPose_new.at<double>(0,3) += g2o::Sampler::gaussRand(0., 0.2);
-    //  matPose_new.at<double>(1,3) += g2o::Sampler::gaussRand(0., 0.2);
-    //  matPose_new.at<double>(3,3) += g2o::Sampler::gaussRand(0., 0.2);
-
-      cout << "iTrfIdx: " << iTrfIdx << endl << "matTrf: " << endl << matTrf << endl;
-
-      // Recovering matTrf
-      matT_WwrtW_cur = matPose_old.inv() * matPose_new;
+      // Recovering matTww
+      matT_WwrtW_cur = matPose_old.inv() * matPose_new; // If bInitTrfWtoWAsUnknown = false, Identity matrix
       matPose_new.copyTo(matPose_old);
 
-      cout << iTrfIdx << ": matT_WwrtW_cur: " << matT_WwrtW_cur << endl;
-
-      if(bDebug)
+      if(true) //bDebug)
       {
-        cout << "matTrf: " << endl << matTrf << endl;
+        cout << iTrfIdx << ": matT_WwrtW_cur: " << matT_WwrtW_cur << endl;
         cout << "matPose_new: " << endl << matPose_new << endl;
       }
       g2o::SE3Quat pose;
@@ -282,11 +275,8 @@ int main(int argc, const char* argv[]) {
 
       // Adding a unary edge to the pose vertex that will enforece SE(2) constrained SE(3) poses
       if(bEnableSE2constrainedSE3poses){
-        cout << "pose: " << pose << endl;
-        cout << " toSE3Quat(matPose_new): " <<  toSE3Quat(matPose_new) << endl;
-
-        //addPlaneMotionSE3Expmap(optimizer, pose, vertex_id, matT_Rt);
-        
+        //cout << "pose: " << pose << endl;
+        //cout << "toSE3Quat(matPose_new): " <<  toSE3Quat(matPose_new) << endl;
         addPlaneMotionSE3Expmap(optimizer, toSE3Quat(matPose_new), vertex_id, matT_CwrtW_init_fixed);
       } 
 
@@ -475,6 +465,7 @@ int main(int argc, const char* argv[]) {
   double dTimeNs = t.time_ns();
   //////////////////////////////////////////////////////////////
 
+  cout << endl;
   if(true)
   {
     Mat matT_WwrtW_cur;
@@ -484,11 +475,10 @@ int main(int argc, const char* argv[]) {
       g2o::HyperGraph::VertexIDMap::iterator v_it =  optimizer.vertices().find(i);
       if (v_it == optimizer.vertices().end()) 
       {
-                cerr << "Vertex " << i << " not in graph!" << endl;
-                exit(-1);
+        cerr << "Vertex " << i << " not in graph!" << endl;
+        exit(-1);
       }
-      g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);
-      
+      g2o::VertexSE3Expmap* v_pose = dynamic_cast<g2o::VertexSE3Expmap*>(v_it->second);      
       Eigen::Isometry3d poseOpt = v_pose->estimate();
       if(bDebug)
       {
@@ -502,13 +492,13 @@ int main(int argc, const char* argv[]) {
       // ToDo: Extract T_W_wrtW to compare with GT in input YML file      
       Mat matPoseOpt(4,4,CV_64FC1);
       getMat(poseOpt.matrix(), matPoseOpt);
-      if(i==0) matPose_old = matPoseOpt.clone();
+      if(i==0) 
+        matPose_old = matPoseOpt.clone();
       else
         matT_WwrtW_cur = matPose_old.inv() * matPoseOpt; 
-        matPoseOpt.copyTo(matPose_old);
+      matPoseOpt.copyTo(matPose_old);
       if(matT_WwrtW_cur.data)
       {
-        cout <<  "matT_WwrtW_cur " << i << endl << matT_WwrtW_cur << endl;
         // Obtain tx, ty, Rz, 
         double tx = matT_WwrtW_cur.at<double>(0,3);
         double ty = matT_WwrtW_cur.at<double>(1,3);
@@ -517,10 +507,16 @@ int main(int argc, const char* argv[]) {
         matT_WwrtW_cur(Rect(0,0,3,3)).copyTo(matR);
         Mat matR_Euler(1,3,CV_64FC1);
         cv::Rodrigues(matR, matR_Euler);
-        cout << "matR_Euler: " << endl << matR_Euler << endl;
-        matR_Euler = matR_Euler * 180 / CV_PI;
-        cout << "matR_Euler (deg): " << endl << matR_Euler << endl;
-        cout << "tx: " << tx << ", ty: " << ty << ", tz: " << tz << endl;
+        Mat matR_Euler_deg = matR_Euler * 180 / CV_PI;
+        //cout <<  "matT_WwrtW_cur " << i << endl << matT_WwrtW_cur << endl;
+        // cout << "matR_Euler: " << endl << matR_Euler << endl;
+        // cout << "matR_Euler_deg (deg): " << endl << matR_Euler_deg << endl;
+        double Rx_deg = matR_Euler_deg.at<double>(0,0);
+        double Ry_deg = matR_Euler_deg.at<double>(1,0);
+        double Rz_deg = matR_Euler_deg.at<double>(2,0);
+        cout << "Optimized Tww " << i 
+          << ": (deg) Rx: " << Rx_deg << ", Ry: " << Ry_deg << ", Rz: " << Rz_deg
+          << ",(m) tx: " << tx << ", ty: " << ty << ", tz: " << tz << endl;
       }
     }
   }
