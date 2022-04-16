@@ -143,7 +143,7 @@ int main(int argc, const char* argv[]) {
   int iNumIterations = 10;
   int iImgWidth = 3000;
   int iImgHeight = 2000;
-  float fGaussNoiseStdDev = 3.0; //3.0; //3.0f;
+  float fGaussNoiseStdDev = 3.0;
   bool bSetObservationsExplicitly = true; // This will include PIXEL_NOISE specified via program argument
   bool bInitTrfWtoWAsUnknown = true;
   bool bEnableSE2constrainedSE3poses = true;
@@ -346,6 +346,7 @@ int main(int argc, const char* argv[]) {
       optimizer.addVertex(v_p);
       Vector2d ptI_gt = v2dObservations[i];
       bool inlier = true;
+
       for (size_t j = 0; j < true_poses.size(); ++j) {
         Vector2d z;
         if(bSetObservationsExplicitly)
@@ -358,6 +359,10 @@ int main(int argc, const char* argv[]) {
           z = cam_params->cam_map(true_poses.at(j).map(true_points.at(i)));
 
         if (z[0] >= 0 && z[1] >= 0 && z[0] < iImgWidth && z[1] < iImgHeight) {
+          // A point is considered an outlier if it is an outlier for any pose.
+          // If OUTLIER_RATIO is 0.1, 10% probability that the point is an outlier !!!
+          // This is a bit weird because if we have many poses, the possibility of pose being 
+          // an outlier is heavily increased
           double sam = g2o::Sampler::uniformRand(0., 1.);
           if (sam < OUTLIER_RATIO) {
             z = Vector2d(Sample::uniform(0, iImgWidth), Sample::uniform(0, iImgHeight));
@@ -468,6 +473,25 @@ int main(int argc, const char* argv[]) {
   cout << endl;
   if(true)
   {
+    // Display the optimized 3D point vertices
+    for (g2o::OptimizableGraph::VertexIDMap::const_iterator it = optimizer.vertices().begin();
+        it != optimizer.vertices().end(); ++it) 
+    {
+      g2o::OptimizableGraph::Vertex* v = static_cast<g2o::OptimizableGraph::Vertex*>(it->second);
+      if (v->dimension() == 3)
+      {
+        g2o::VertexPointXYZ* v_p = dynamic_cast<g2o::VertexPointXYZ*>(it->second);
+        // cout << "ID: " << endl << it->first << ": " << v_p->estimate() << endl;
+        Vector3d diffW = v_p->estimate() - true_points[it->first - true_poses.size()];
+        cout << "ID: " << it->first << " diffW: " << endl << diffW; 
+
+        if(inliers.find(it->first) != inliers.end())
+          cout << " -- inlier" << endl;
+        else
+          cout << " -- outlier" << endl;
+      }
+    }
+
     Mat matT_WwrtW_cur;
     Mat matPose_old;
     for(int i = 0; i < (int)true_poses.size(); i++)
@@ -531,6 +555,8 @@ int main(int argc, const char* argv[]) {
   sum_diff2_W = 0;
   sum_diff2_I_gt = 0;
   double sum_diff2_I_meas = 0;
+  double sum_diff2_W_all = 0;
+  double sum_diff2_I_meas_all = 0;
 
   for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
       it != pointid_2_trueid.end(); ++it) {
@@ -546,8 +572,16 @@ int main(int argc, const char* argv[]) {
       exit(-1);
     }
     Vector3d diffW = v_p->estimate() - true_points[it->second];    
-    if (inliers.find(it->first) == inliers.end()) continue;
-    sum_diff2_W += diffW.dot(diffW);
+    bool bIsInlier = false;
+    if (inliers.find(it->first) != inliers.end())
+    {
+      bIsInlier = true;
+      cout << "inlier -- id " << it->first << endl;
+    }
+
+    if(bIsInlier)
+      sum_diff2_W += diffW.dot(diffW);
+    sum_diff2_W_all += diffW.dot(diffW);
 
     // Get projection of all ptW for the poses
     for (size_t j = 0; j < true_poses.size(); ++j) 
@@ -600,7 +634,9 @@ int main(int argc, const char* argv[]) {
       sum_diff2_I_gt = diffI_gt.dot(diffI_gt);
 
       Vector2d diffI_meas = ptI_meas - ptI_reproj;
-      sum_diff2_I_meas = diffI_meas.dot(diffI_meas);
+      if(bIsInlier)
+        sum_diff2_I_meas = diffI_meas.dot(diffI_meas);
+      sum_diff2_I_meas_all = diffI_meas.dot(diffI_meas);
 
       if(bDebug)
       {
@@ -622,10 +658,16 @@ int main(int argc, const char* argv[]) {
   
   cout << endl <<  "Point error after optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
-  cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_gt): "
-      << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
+  // cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_gt): "
+  //     << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
   cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_meas): "
       << sqrt(sum_diff2_I_meas / ((int)inliers.size() * iNumPolygonsToConsider)) 
+      << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
+
+  cout << endl <<  "Point error after optimization (all points) 3D world points: "
+      << sqrt(sum_diff2_W / true_points.size()) << endl;
+  cout << "Point error after optimization (all points) 2D image points (w.r.t ptI_meas): "
+      << sqrt(sum_diff2_I_meas / ((int)true_points.size() * iNumPolygonsToConsider)) 
       << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
   cout << endl;
 

@@ -31,6 +31,7 @@ using namespace cv;
 #define COLOR_YELLOW Scalar(0,255,255)
 
 #define YML_GENERATED_PTS2D3D_FLOW "input/GeneratedDtInMotion/Thu_1_Apr_2021_04-45-56/ptsForDtInFlow.yml"
+//#define YML_GENERATED_PTS2D3D_FLOW "input/GeneratedTriangles/Mon_9_Nov_2020_14-10-40-generated_triangles_in_motion.yml"
 #define YML_EXTRNSICS "input/GeneratedDtInMotion/Thu_1_Apr_2021_04-45-56/userdefextrinsics.yml" 
 #define YML_INTRINSICS "input/GeneratedDtInMotion/Thu_1_Apr_2021_04-45-56/userdefintrinsics.yml" 
 
