@@ -170,20 +170,26 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Info_ww(4,4) = 1e-4;
     Info_ww(5,5) = 1;   // Allowing some perturbations
 
-    std::cout << "Info_ww: " << Info_ww << std::endl;
-    std::cout << "Tcw = Tcw_fixed * Tww: " << Tcw << std::endl;
+    if(bDebug)
+    {
+        std::cout << "Info_ww: " << Info_ww << std::endl;
+        std::cout << "Tcw = Tcw_fixed * Tww: " << Tcw << std::endl;
+    }   
 
     // Transfer of covariance (Hessian in this case)
 
-    std::cout << "Twc_fixed: " << std::endl << Twc_fixed << std::endl;
-    std::cout << "toSE3Quat(Twc_fixed): " << std::endl << toSE3Quat(Twc_fixed) << std::endl;
-    // Adjoint (Adjugate) matrix for SE(3) used as Jacobian matrix
-    std::cout << "toSE3Quat(Twc_fixed).adj(): " << std::endl << toSE3Quat(Twc_fixed).adj() << std::endl;
+    if(bDebug)
+    {
+        std::cout << "Twc_fixed: " << std::endl << Twc_fixed << std::endl;
+        std::cout << "toSE3Quat(Twc_fixed): " << std::endl << toSE3Quat(Twc_fixed) << std::endl;
+        // Adjoint (Adjugate) matrix for SE(3) used as Jacobian matrix
+        std::cout << "toSE3Quat(Twc_fixed).adj(): " << std::endl << toSE3Quat(Twc_fixed).adj() << std::endl;
+    }
     // Compute Jacobian of the Twc transformation
     Matrix6d J_ww_cc = toSE3Quat(Twc_fixed).adj();  // Twc_fixed -- pose 0 inv --> Jacobian for camera to world
-    std::cout << "J_ww_cc: " << std::endl << J_ww_cc << std::endl;
+    if(bDebug) std::cout << "J_ww_cc: " << std::endl << J_ww_cc << std::endl;
     Matrix6d Info_cc = J_ww_cc.transpose() * Info_ww * J_ww_cc;
-    std::cout << "Info_cc: " << std:: endl << Info_cc << std::endl;
+    if(bDebug) std::cout << "Info_cc: " << std:: endl << Info_cc << std::endl;
 #else
 
     g2o::SE3Quat Twc_fixed = toSE3Quat(matT_CwrtW_init_fixed);
@@ -225,8 +231,11 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     planeConstraint->setInformation(Info_cc);
 #ifdef USE_EULER
     planeConstraint->setMeasurement(toSE3Quat(Tcw));
-    std::cout << "Info_cc: " << Info_cc << std::endl;
-    std::cout << "measurement toSE3Quat(Tcw): " << toSE3Quat(Tcw) << std::endl;
+    if(bDebug)
+    {
+        std::cout << "Info_cc: " << Info_cc << std::endl;
+        std::cout << "measurement toSE3Quat(Tcw): " << toSE3Quat(Tcw) << std::endl;
+    }
 #else
     planeConstraint->setMeasurement(Tcw);
 #endif

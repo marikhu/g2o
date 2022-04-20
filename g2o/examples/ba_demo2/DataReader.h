@@ -32,6 +32,7 @@ using namespace cv;
 
 #define YML_GENERATED_PTS2D3D_FLOW "input/GeneratedDtInMotion/Thu_1_Apr_2021_04-45-56/ptsForDtInFlow.yml"
 //#define YML_GENERATED_PTS2D3D_FLOW "input/GeneratedTriangles/Mon_9_Nov_2020_14-10-40-generated_triangles_in_motion.yml"
+#define YML_PARAMETERS_LEVMAR "input/GeneratedDtInMotion/Thu_1_Apr_2021_04-45-56/parameters_bUseAzToInit.yml"
 #define YML_EXTRNSICS "input/GeneratedDtInMotion/Thu_1_Apr_2021_04-45-56/userdefextrinsics.yml" 
 #define YML_INTRINSICS "input/GeneratedDtInMotion/Thu_1_Apr_2021_04-45-56/userdefintrinsics.yml" 
 
@@ -52,6 +53,16 @@ typedef struct tsPolygon
     double dt; // timestep
 }tsPolygon;
 
+typedef struct tsProblemConfig
+{
+    int iNumPolygons;
+    int iNumPtsPerPolygon;
+    double dHeightA;
+    bool bUseAxToInit;
+    bool bUseAyToInit;
+    bool bUseAzToInit;
+}tsProblemConfig;
+
 
 class DataReader
 {
@@ -66,6 +77,12 @@ class DataReader
         void getTrfs(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Mat> &vMatTrfs, bool bDebug = false);
         void setFileExtrinsics(string sFile, Mat &matP, Mat &matHgToI, Mat &matHiToG, bool bDebug = false);
         void setFileIntrinsics(string sFile, Mat &matK, Mat &matD, bool bDebug = false);
+
+        void setParameters(string sFile, tsProblemConfig &problemConfig, 
+            Mat &matInitParams, 
+            Mat &matOptParams, 
+            int iInvocationIdx, 
+            bool bDebug = false);
         
 
     private:

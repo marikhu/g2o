@@ -114,8 +114,8 @@ int main(int argc, const char* argv[]) {
   cout << "STRUCTURE_ONLY: " << STRUCTURE_ONLY << endl;
   cout << "DENSE: " << DENSE << endl;
 
-  g2o::SparseOptimizer optimizer;
-  optimizer.setVerbose(false);
+  g2o::SparseOptimizer optimizer;  
+  optimizer.setVerbose(true);
   string solverName = "lm_fix6_3";
   if (DENSE) {
     solverName = "lm_dense6_3";
@@ -147,11 +147,18 @@ int main(int argc, const char* argv[]) {
   bool bSetObservationsExplicitly = true; // This will include PIXEL_NOISE specified via program argument
   bool bInitTrfWtoWAsUnknown = true;
   bool bEnableSE2constrainedSE3poses = true;
+  bool bUseInitParamsFromLevmarOpt = false;
 
   // Load data
   DataReader *pDataReader = new DataReader();
   vector<vector<tsPolygon>> vvPolygonsInFlow;
   pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, bDebug);
+
+  Mat matInitParams, matOptParams;
+  tsProblemConfig problemConfig;
+  int iInvocationIdx = 0;
+  pDataReader->setParameters(YML_PARAMETERS_LEVMAR, problemConfig, matInitParams, matOptParams, iInvocationIdx, true);
+
 
   // Get 3D points for the first polygon, considered as the true points
   vector<Vector3d> true_points;
@@ -243,7 +250,7 @@ int main(int argc, const char* argv[]) {
       {
         // Here, initializing tx, ty, Rz to 0, 
         // considering identity for rotation matrix and zero vector for translation matrix
-        matPose_new = matPose_new;
+        matPose_new = matPose_old;
       }
       else
       {
@@ -300,10 +307,22 @@ int main(int argc, const char* argv[]) {
     g2o::VertexPointXYZ* v_p = new g2o::VertexPointXYZ();
     v_p->setId(point_id);
     v_p->setMarginalized(true);
-    double dRandX = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
-    double dRandY = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
-    double dRandZ = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
-    v_p->setEstimate(true_points.at(i) + Vector3d(dRandX, dRandY, dRandZ));
+    if(bUseInitParamsFromLevmarOpt)
+    {      
+      cout << "bUseInitParamsFromLevmarOpt: " << bUseInitParamsFromLevmarOpt << endl;
+      double x = matInitParams.at<double>(3*i,0);
+      double y = matInitParams.at<double>(3*i+1,0);
+      double z = matInitParams.at<double>(3*i+2,0);
+      cout << "x " << x << " y " << y << " z " << z << endl;
+      v_p->setEstimate(Vector3d(x, y, z));      
+    }
+    else 
+    {
+      double dRandX = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
+      double dRandY = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
+      double dRandZ = g2o::Sampler::gaussRand(0., fGaussNoiseStdDev);
+      v_p->setEstimate(true_points.at(i) + Vector3d(dRandX, dRandY, dRandZ));
+    }
     Vector3d ptW = v_p->estimate();
 
     // Checking for inliers/outliers
@@ -368,8 +387,9 @@ int main(int argc, const char* argv[]) {
             z = Vector2d(Sample::uniform(0, iImgWidth), Sample::uniform(0, iImgHeight));
             inlier = false;
           }
-          z += Vector2d(g2o::Sampler::gaussRand(0., PIXEL_NOISE),
-                        g2o::Sampler::gaussRand(0., PIXEL_NOISE));
+          if(PIXEL_NOISE > 0)           
+            z += Vector2d(g2o::Sampler::gaussRand(0., PIXEL_NOISE),
+                          g2o::Sampler::gaussRand(0., PIXEL_NOISE));
           g2o::EdgeProjectXYZ2UV* e = new g2o::EdgeProjectXYZ2UV();
           e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(v_p)); // 3D point
           e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(
@@ -539,8 +559,12 @@ int main(int argc, const char* argv[]) {
         double Ry_deg = matR_Euler_deg.at<double>(1,0);
         double Rz_deg = matR_Euler_deg.at<double>(2,0);
         cout << "Optimized Tww " << i 
-          << ": (deg) Rx: " << Rx_deg << ", Ry: " << Ry_deg << ", Rz: " << Rz_deg
-          << ",(m) tx: " << tx << ", ty: " << ty << ", tz: " << tz << endl;
+          << ": Rx: " << Rx_deg << ", Ry: " << Ry_deg << ", Rz: " << Rz_deg << " (deg) \t"
+          <<"tx: " << tx << ", ty: " << ty << ", tz: " << tz <<  " (m)" << endl;
+
+        cout << "True Tww " << i 
+          << ": Rz: " << vvPolygonsInFlow[0][i].trf.Rz * 180/CV_PI << " (deg) \t"
+          << "tx: " << vvPolygonsInFlow[0][i].trf.tx << ", ty: " <<  vvPolygonsInFlow[0][i].trf.ty << " (m)" << endl;
       }
     }
   }

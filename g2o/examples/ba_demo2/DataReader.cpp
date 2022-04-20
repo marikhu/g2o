@@ -19,7 +19,10 @@ void DataReader::setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPol
 
     _fs.open(sFile, FileStorage::READ);
     if (!_fs.isOpened())
+    {
         cerr << "Unable to read: " << sFile << endl;
+        exit(-1);
+    }
 
     string sNode = "frameNo";
     FileNode fn = _fs[sNode];
@@ -195,7 +198,7 @@ void DataReader::setFileExtrinsics(string sFile, Mat &matP, Mat &matHgToI, Mat &
     if (!_fs.isOpened())
     {
         cerr << "Unable to read: " << sFile << endl;
-        return;
+        exit(-1);
     }
 
     string sNode = "matP";
@@ -222,7 +225,7 @@ void DataReader::setFileIntrinsics(string sFile, Mat &matK, Mat &matD, bool bDeb
     if (!_fs.isOpened())
     {
         cerr << "Unable to read: " << sFile << endl;
-        return;
+        exit(-1);
     }
 
     string sNode = "camera_matrix";
@@ -284,3 +287,42 @@ void DataReader::getTrfs(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToCo
     }
 }
 
+void DataReader::setParameters(string sFile, tsProblemConfig &problemConfig, 
+    Mat &matInitParams,  Mat &matOptParams, int iInvocationIdx, bool bDebug)
+{
+    _fs.open(sFile, FileStorage::READ);
+    if (!_fs.isOpened())
+    {
+        cerr << "Unable to read: " << sFile << endl;
+        exit(-1);
+    }
+
+    problemConfig.iNumPolygons = (int)_fs["iNumPolygons"];
+    problemConfig.iNumPtsPerPolygon = (int)_fs["iNumPtsPerPolygon"];
+    problemConfig.dHeightA = (double)_fs["dHeightA"];
+    problemConfig.bUseAxToInit = (bool)(int)_fs["bUseAxToInit"];
+    problemConfig.bUseAyToInit = (bool)(int)_fs["bUseAyToInit"];
+    problemConfig.bUseAzToInit = (bool)(int)_fs["bUseAzToInit"];
+
+    string sMatInitParams = "matInitParams" + to_string(iInvocationIdx);
+    _fs[sMatInitParams] >> matInitParams;
+    string sMatOptParams = "matOptParams" + to_string(iInvocationIdx);
+    _fs[sMatOptParams] >> matOptParams;
+
+    if(_fs.isOpened())
+        _fs.release();
+
+    if(bDebug)
+    {
+        cout << "iInvocationIdx: " << iInvocationIdx << endl;
+        cout << "problemConfig: " << endl;
+        cout << "problemConfig.iNumPolygons: " << problemConfig.iNumPolygons << endl;
+        cout << "problemConfig.iNumPtsPerPolygon: " << problemConfig.iNumPtsPerPolygon << endl;
+        cout << "problemConfig.dHeightA: " << problemConfig.dHeightA << endl;
+        cout << "problemConfig.bUseAxToInit: " << problemConfig.bUseAxToInit << endl;
+        cout << "problemConfig.bUseAyToInit: " << problemConfig.bUseAyToInit << endl;
+        cout << "problemConfig.bUseAzToInit: " << problemConfig.bUseAzToInit << endl;
+        cout << "matInitParams: " << matInitParams << endl;
+        cout << "matOptParams: " << matOptParams << endl;
+    }
+}
