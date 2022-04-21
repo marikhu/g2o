@@ -280,7 +280,7 @@ int main(int argc, const char* argv[]) {
       optimizer.addVertex(v_se3);
       true_poses.push_back(pose);
 
-      // Adding a unary edge to the pose vertex that will enforece SE(2) constrained SE(3) poses
+      // Adding a unary edge to the pose vertex that will enforce SE(2) constrained SE(3) poses
       if(bEnableSE2constrainedSE3poses){
         //cout << "pose: " << pose << endl;
         //cout << "toSE3Quat(matPose_new): " <<  toSE3Quat(matPose_new) << endl;
@@ -503,7 +503,8 @@ int main(int argc, const char* argv[]) {
         g2o::VertexPointXYZ* v_p = dynamic_cast<g2o::VertexPointXYZ*>(it->second);
         // cout << "ID: " << endl << it->first << ": " << v_p->estimate() << endl;
         Vector3d diffW = v_p->estimate() - true_points[it->first - true_poses.size()];
-        cout << "ID: " << it->first << " diffW: " << endl << diffW; 
+        cout << "ID: " << it->first << " diffW: " << endl << diffW << endl;
+        cout << "v_p->estimate(): " << v_p->estimate() << endl;
 
         if(inliers.find(it->first) != inliers.end())
           cout << " -- inlier" << endl;

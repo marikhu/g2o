@@ -163,12 +163,12 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     // Low values for sigma_tx*sigma_tx means high variance for tx
     // 1 meter for sigma_tz*sigma_tz means some variation allowed for tz
     Matrix6d Info_ww = Matrix6d::Zero();    // 6x6 matrix
-    Info_ww(0,0) = 1e6;
-    Info_ww(1,1) = 1e6;
-    Info_ww(2,2) = 1e-4;
-    Info_ww(3,3) = 1e-4;
-    Info_ww(4,4) = 1e-4;
-    Info_ww(5,5) = 1;   // Allowing some perturbations
+    Info_ww(0,0) = 1e6;     // Rx
+    Info_ww(1,1) = 1e6;     // Ry
+    Info_ww(2,2) = 1e-4;    // Rz
+    Info_ww(3,3) = 1e-4;    // tx, better with 1e-1 but could be data dependent, known/prior info
+    Info_ww(4,4) = 1e-4;    // ty
+    Info_ww(5,5) = 1;       // tz   // Allowing some perturbations
 
     if(bDebug)
     {
