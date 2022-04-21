@@ -67,4 +67,7 @@ public:
 EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matT_CwrtW_init_fixed, bool bDebug = false);
 
+EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap2(
+    g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matT_CwrtB_fixed, bool bDebug = false);
+
 #endif // EDGESE3EXPMAPPRIOR_H_

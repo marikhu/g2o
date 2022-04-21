@@ -243,6 +243,29 @@ int main(int argc, const char* argv[]) {
   Mat matPose_new = matPose_init.clone();
   Mat matPose_old = matPose_init.clone();
   Mat matT_WwrtW_cur;
+
+  // Get bTc -- mat_CwrtB
+  // Assuming camera (Camera frame) is on the robot (Base frame)
+  // Assuming Base frame just below the camera frame, and as a translated-only world frame
+  Mat Twc = Tcw.inv();
+  Mat Twb(4,4,CV_64FC1);
+  Twb.setTo(0);
+  // Rotation is identity
+  Twb.at<double>(0,0)=1;
+  Twb.at<double>(1,1)=1;
+  Twb.at<double>(2,2)=1;
+  // tx and ty from Twc
+  Twb.at<double>(0,3) = Twc.at<double>(0,3);
+  Twb.at<double>(1,3) = Twc.at<double>(1,3);
+  // tz = 0
+  Twb.at<double>(2,3)=0;
+  Twb.at<double>(3,3)=1;
+  Mat Tbw = Twb.inv();
+  Mat bTc = Tbw * Twc;
+
+  cout << "Twb: " << Twb << endl;
+  cout << "bTc: " << bTc << endl;
+
   for(int iTrfIdx = 1; iTrfIdx < (int)vMatTrfs.size(); iTrfIdx++)
   {
       // Now, we need Trf of new World frame wrt Cam frame
@@ -284,7 +307,8 @@ int main(int argc, const char* argv[]) {
       if(bEnableSE2constrainedSE3poses){
         //cout << "pose: " << pose << endl;
         //cout << "toSE3Quat(matPose_new): " <<  toSE3Quat(matPose_new) << endl;
-        addPlaneMotionSE3Expmap(optimizer, toSE3Quat(matPose_new), vertex_id, matT_CwrtW_init_fixed);
+        //addPlaneMotionSE3Expmap(optimizer, toSE3Quat(matPose_new), vertex_id, matT_CwrtW_init_fixed);
+        addPlaneMotionSE3Expmap2(optimizer, toSE3Quat(matPose_new), vertex_id, bTc);
       } 
 
       vertex_id++;
