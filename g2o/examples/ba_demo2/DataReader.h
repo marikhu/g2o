@@ -71,10 +71,10 @@ class DataReader
         ~DataReader();
 
         void checkNode(FileNode fn, string sNode);
-        void setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPolygon>> &vvPolygonsInFlow, bool bDebug = false);
+        void setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPolygon>> &vvPolygonsInFlow, int iMaxNumPolygonsToConsider, bool bDebug = false);
         void getTruePoints(tsPolygon polygon, vector<Vector3d> &true_points, bool bDebug = false);
-        void getObservations(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Vector2d> &observations, bool bDebug = false);
-        void getTrfs(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Mat> &vMatTrfs, bool bDebug = false);
+        void getObservations(vector<tsPolygon> vPolygonsInFlow, int iStartPolygonIdx, int iNumPolygonsToConsider, vector<Vector2d> &observations, bool bDebug = false);
+        void getTrfs(vector<tsPolygon> vPolygonsInFlow, int iStartPolygonIdx, int iNumPolygonsToConsider, vector<Mat> &vMatTrfs, bool bDebug = false);
         void setFileExtrinsics(string sFile, Mat &matP, Mat &matHgToI, Mat &matHiToG, bool bDebug = false);
         void setFileIntrinsics(string sFile, Mat &matK, Mat &matD, bool bDebug = false);
 

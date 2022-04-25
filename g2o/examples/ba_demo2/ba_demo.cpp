@@ -152,23 +152,24 @@ int main(int argc, const char* argv[]) {
   // Load data
   DataReader *pDataReader = new DataReader();
   vector<vector<tsPolygon>> vvPolygonsInFlow;
-  pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, bDebug);
+  int iMaxNumPolygonsToConsider = 0; // Consider all of them
+  pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, iMaxNumPolygonsToConsider, bDebug);
+
+  int iStartPolygonIdx = 15;
 
   Mat matInitParams, matOptParams;
   tsProblemConfig problemConfig;
-  int iInvocationIdx = 0;
-  pDataReader->setParameters(YML_PARAMETERS_LEVMAR, problemConfig, matInitParams, matOptParams, iInvocationIdx, true);
-
+  pDataReader->setParameters(YML_PARAMETERS_LEVMAR, problemConfig, matInitParams, matOptParams, iStartPolygonIdx, true);
 
   // Get 3D points for the first polygon, considered as the true points
   vector<Vector3d> true_points;
   if(iNumPolygonsToConsider == 0) iNumPolygonsToConsider = vvPolygonsInFlow[0].size();
-  pDataReader->getTruePoints(vvPolygonsInFlow[0][0], true_points, bDebug);
+  pDataReader->getTruePoints(vvPolygonsInFlow[0][iStartPolygonIdx], true_points, bDebug);
   cout << "# true_points: " << true_points.size() << endl;
 
   // Get 2D observations 
   vector<Vector2d> v2dObservations;
-  pDataReader->getObservations(vvPolygonsInFlow[0], iNumPolygonsToConsider, v2dObservations, bDebug);
+  pDataReader->getObservations(vvPolygonsInFlow[0], iStartPolygonIdx, iNumPolygonsToConsider, v2dObservations, bDebug);
   cout << "# observations: " << v2dObservations.size() << endl;
   if(bDebug)
   {
@@ -225,7 +226,7 @@ int main(int argc, const char* argv[]) {
   vertex_id++;
   
   vector<Mat> vMatTrfs;
-  pDataReader->getTrfs(vvPolygonsInFlow[0], iNumPolygonsToConsider, vMatTrfs, bDebug);
+  pDataReader->getTrfs(vvPolygonsInFlow[0], iStartPolygonIdx, iNumPolygonsToConsider, vMatTrfs, bDebug);
   // P0_C = T_WwrtC * P1_W                    -- pose for P1_W
   // P2_W = T_WwrtW * P1_W
   // P1_W = (T_WwrtW)^-1 * P2_W
@@ -334,9 +335,15 @@ int main(int argc, const char* argv[]) {
     if(bUseInitParamsFromLevmarOpt)
     {      
       cout << "bUseInitParamsFromLevmarOpt: " << bUseInitParamsFromLevmarOpt << endl;
+#if 1
       double x = matInitParams.at<double>(3*i,0);
       double y = matInitParams.at<double>(3*i+1,0);
       double z = matInitParams.at<double>(3*i+2,0);
+#else
+      double x = matOptParams.at<double>(3*i,0);
+      double y = matOptParams.at<double>(3*i+1,0);
+      double z = matOptParams.at<double>(3*i+2,0);
+#endif
       cout << "x " << x << " y " << y << " z " << z << endl;
       v_p->setEstimate(Vector3d(x, y, z));      
     }
@@ -348,6 +355,7 @@ int main(int argc, const char* argv[]) {
       v_p->setEstimate(true_points.at(i) + Vector3d(dRandX, dRandY, dRandZ));
     }
     Vector3d ptW = v_p->estimate();
+    cout << "1" << endl;
 
     // Checking for inliers/outliers
     int num_obs = 0;
@@ -382,6 +390,7 @@ int main(int argc, const char* argv[]) {
         ++num_obs;
       }
     }
+    cout << "2" << endl;
 
     // Considering those points which are inliers or those which are within the image dimensions
     cout << "num_obs for " << i << ": " << num_obs << endl;

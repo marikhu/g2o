@@ -13,7 +13,7 @@ void DataReader::checkNode(FileNode fn, string sNode)
         cerr << "Node " << sNode << " is absent." << endl;
 }
 
-void DataReader::setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPolygon>> &vvPolygonsInFlow, bool bDebug)
+void DataReader::setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPolygon>> &vvPolygonsInFlow, int iMaxNumPolygonsToConsider, bool bDebug)
 {
     vvPolygonsInFlow.clear();
 
@@ -76,10 +76,9 @@ void DataReader::setFileGeneratedPts2d3dInFlow(string sFile, vector<vector<tsPol
         checkNode(fn2, sNode);
         int iNumPolygons = (int)fn2;
 
-        int iMaxNumPolygonsToConsider = 100;
         for (int iPolygonIdx = 0; iPolygonIdx < iNumPolygons; iPolygonIdx++)
         {
-            if (iPolygonIdx > iMaxNumPolygonsToConsider)
+            if (iMaxNumPolygonsToConsider != 0 && iPolygonIdx > iMaxNumPolygonsToConsider)
                 break;
 
             string sNode = "polygon" + to_string(iPolygonIdx);
@@ -254,13 +253,17 @@ void DataReader::getTruePoints(tsPolygon polygon, vector<Vector3d> &true_points,
     }
 }
 
-void DataReader::getObservations(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Vector2d> &observations, bool bDebug)
+void DataReader::getObservations(vector<tsPolygon> vPolygonsInFlow, int iStartPolygonIdx, int iNumPolygonsToConsider, vector<Vector2d> &observations, bool bDebug)
 {
     observations.clear();
     int iNumPolygons = (int)vPolygonsInFlow.size();
-    for(int iPolygonIdx = 0; iPolygonIdx < iNumPolygons; iPolygonIdx++)
+    if(iStartPolygonIdx + iNumPolygonsToConsider >= iNumPolygons)
     {
-        if(iPolygonIdx >= iNumPolygonsToConsider) break;
+        cerr << "# of polygons to obtain < # of polygons" << endl;
+        exit(-1);
+    }
+    for(int iPolygonIdx = iStartPolygonIdx; iPolygonIdx < iStartPolygonIdx+iNumPolygonsToConsider; iPolygonIdx++)
+    {
         tsPolygon polygon = vPolygonsInFlow[iPolygonIdx];
         int iNumPts = (int)polygon.vPtsW.size();
         for(int iPtIdx = 0; iPtIdx < iNumPts; iPtIdx++)
@@ -274,13 +277,17 @@ void DataReader::getObservations(vector<tsPolygon> vPolygonsInFlow, int iNumPoly
 
 
 // Given polygons in flow, get the 3D world points
-void DataReader::getTrfs(vector<tsPolygon> vPolygonsInFlow, int iNumPolygonsToConsider, vector<Mat> &vMatTrfs, bool bDebug)
+void DataReader::getTrfs(vector<tsPolygon> vPolygonsInFlow, int iStartPolygonIdx, int iNumPolygonsToConsider, vector<Mat> &vMatTrfs, bool bDebug)
 {
     vMatTrfs.clear();
     int iNumPolygons = (int)vPolygonsInFlow.size();
-    for(int iPolygonIdx = 0; iPolygonIdx < iNumPolygons; iPolygonIdx++)
+    if(iStartPolygonIdx + iNumPolygonsToConsider >= iNumPolygons)
     {
-        if(iPolygonIdx >= iNumPolygonsToConsider) break;
+        cerr << "# of polygons to obtain < # of polygons" << endl;
+        exit(-1);
+    }
+    for(int iPolygonIdx = iStartPolygonIdx; iPolygonIdx < iStartPolygonIdx+iNumPolygonsToConsider; iPolygonIdx++)
+    {
         tsPolygon polygon = vPolygonsInFlow[iPolygonIdx];
         Mat matT = polygon.trf.matT;
         vMatTrfs.push_back(matT); // NOTE: First matrix is zero matrix, not to be used.
