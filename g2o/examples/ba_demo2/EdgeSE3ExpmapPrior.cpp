@@ -111,8 +111,6 @@ Eigen::Matrix<double,3,3> toMatrix3d(const cv::Mat &cvMat3)
 EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &matT_CwrtW_init_fixed, bool bDebug)
 {
-#define USE_EULER
-
 #ifdef USE_EULER
     const cv::Mat Twc_fixed = matT_CwrtW_init_fixed;  // T_CwrtW = (pose0)^-1  = (T_WwrtC)^-1
     const cv::Mat Tcw_fixed = Twc_fixed.inv(); // T_CwrtW, in order to work on T_WwrtW where constraints are to be enforced.
@@ -166,7 +164,7 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
     Info_ww(0,0) = 1e6;     // Rx
     Info_ww(1,1) = 1e6;     // Ry
     Info_ww(2,2) = 1e-4;    // Rz
-    Info_ww(3,3) = 1e-1;    // tx, better with 1e-1 but could be data dependent, known/prior info
+    Info_ww(3,3) = 1e-4;    // tx, better with 1e-1 but could be data dependent, known/prior info
     Info_ww(4,4) = 1e-4;    // ty
     Info_ww(5,5) = 1;       // tz   // Allowing some perturbations
 
@@ -248,9 +246,6 @@ EdgeSE3ExpmapPrior* addPlaneMotionSE3Expmap(
 EdgeSE3ExpmapPrior*
 addPlaneMotionSE3Expmap2(g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, int vId, const cv::Mat &extPara, bool bDebug) 
 {
-
-//#define USE_EULER
-
 #ifdef USE_EULER
     const cv::Mat bTc = extPara;
     const cv::Mat cTb = bTc.inv();
@@ -271,12 +266,12 @@ addPlaneMotionSE3Expmap2(g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, in
     Tcw = cTb * Tbw;
     //! Vector order: [rot, trans]
     Matrix6d Info_bw = Matrix6d::Zero();
-    Info_bw(0,0) = 1e6;
-    Info_bw(1,1) = 1e6;
-    Info_bw(2,2) = 1e-4;
-    Info_bw(3,3) = 1e-4;
-    Info_bw(4,4) = 1e-4;
-    Info_bw(5,5) = 1e6;
+    Info_bw(0,0) = 1e6;     // Rx
+    Info_bw(1,1) = 1e6;     // Ry
+    Info_bw(2,2) = 1e-4;    // Rz
+    Info_bw(3,3) = 1e-4;    // tx
+    Info_bw(4,4) = 1e-4;    // ty
+    Info_bw(5,5) = 1;       // tz
     Matrix6d J_bb_cc = toSE3Quat(bTc).adj();
     Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
 #else

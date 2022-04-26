@@ -257,9 +257,12 @@ void DataReader::getObservations(vector<tsPolygon> vPolygonsInFlow, int iStartPo
 {
     observations.clear();
     int iNumPolygons = (int)vPolygonsInFlow.size();
-    if(iStartPolygonIdx + iNumPolygonsToConsider >= iNumPolygons)
+    if(iStartPolygonIdx + iNumPolygonsToConsider > iNumPolygons)
     {
         cerr << "# of polygons to obtain < # of polygons" << endl;
+        cout << "iStartPolygonIdx: " << iStartPolygonIdx << endl;
+        cout << "iNumPolygonsToConsider: " << iNumPolygonsToConsider << endl;
+        cout << "iNumPolygons: " << iNumPolygons << endl;
         exit(-1);
     }
     for(int iPolygonIdx = iStartPolygonIdx; iPolygonIdx < iStartPolygonIdx+iNumPolygonsToConsider; iPolygonIdx++)
@@ -281,7 +284,7 @@ void DataReader::getTrfs(vector<tsPolygon> vPolygonsInFlow, int iStartPolygonIdx
 {
     vMatTrfs.clear();
     int iNumPolygons = (int)vPolygonsInFlow.size();
-    if(iStartPolygonIdx + iNumPolygonsToConsider >= iNumPolygons)
+    if(iStartPolygonIdx + iNumPolygonsToConsider > iNumPolygons)
     {
         cerr << "# of polygons to obtain < # of polygons" << endl;
         exit(-1);

@@ -34,6 +34,8 @@
 #include <opencv2/calib3d/calib3d.hpp>
 using namespace cv;
 
+#define USE_EULER
+
 ////////////////////////////////////////////////////////////
 
 typedef Eigen::Matrix<double, 6,6> Matrix6d;

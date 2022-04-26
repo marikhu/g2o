@@ -155,7 +155,8 @@ int main(int argc, const char* argv[]) {
   int iMaxNumPolygonsToConsider = 0; // Consider all of them
   pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, iMaxNumPolygonsToConsider, bDebug);
 
-  int iStartPolygonIdx = 15;
+  int iStartPolygonIdx = 0;
+  // int iStartPolygonIdx = 28;  // The last one that have a huge outlier
 
   Mat matInitParams, matOptParams;
   tsProblemConfig problemConfig;
@@ -320,6 +321,9 @@ int main(int argc, const char* argv[]) {
   int point_id = vertex_id;
   int point_num = 0;
   double sum_diff2_W = 0;
+  double sum_diff2_W_X = 0;
+  double sum_diff2_W_Y = 0;
+  double sum_diff2_W_Z = 0;
   double sum_diff2_I_gt = 0;
 
   cout << endl;
@@ -335,7 +339,7 @@ int main(int argc, const char* argv[]) {
     if(bUseInitParamsFromLevmarOpt)
     {      
       cout << "bUseInitParamsFromLevmarOpt: " << bUseInitParamsFromLevmarOpt << endl;
-#if 1
+#if 0
       double x = matInitParams.at<double>(3*i,0);
       double y = matInitParams.at<double>(3*i+1,0);
       double z = matInitParams.at<double>(3*i+2,0);
@@ -442,6 +446,9 @@ int main(int argc, const char* argv[]) {
         inliers.insert(point_id);
         Vector3d diffW = v_p->estimate() - true_points[i];
         sum_diff2_W += diffW.dot(diffW);
+        sum_diff2_W_X += diffW.x() * diffW.x();
+        sum_diff2_W_Y += diffW.y() * diffW.y();
+        sum_diff2_W_Z += diffW.z() * diffW.z();
 
         // Get projection of all ptW for the poses
         for (size_t j = 0; j < true_poses.size(); ++j) 
@@ -606,14 +613,27 @@ int main(int argc, const char* argv[]) {
   cout << endl;
   cout << "Point error before optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
+  cout << "Point error before optimization (inliers only) 3D world points X: "
+      << sqrt(sum_diff2_W_X / inliers.size()) << endl;
+  cout << "Point error before optimization (inliers only) 3D world points Y: "
+      << sqrt(sum_diff2_W_Y / inliers.size()) << endl;
+  cout << "Point error before optimization (inliers only) 3D world points Z: "
+      << sqrt(sum_diff2_W_Z / inliers.size()) << endl;
+
   cout << "Point error before optimization (inliers only) 2D image points: "
       << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
 
   point_num = 0;
   sum_diff2_W = 0;
+  sum_diff2_W_X = 0;
+  sum_diff2_W_Y = 0;
+  sum_diff2_W_Z = 0;
   sum_diff2_I_gt = 0;
   double sum_diff2_I_meas = 0;
   double sum_diff2_W_all = 0;
+  double sum_diff2_W_X_all = 0;
+  double sum_diff2_W_Y_all = 0;
+  double sum_diff2_W_Z_all = 0;
   double sum_diff2_I_meas_all = 0;
 
   for (unordered_map<int, int>::iterator it = pointid_2_trueid.begin();
@@ -638,8 +658,16 @@ int main(int argc, const char* argv[]) {
     }
 
     if(bIsInlier)
+    {
       sum_diff2_W += diffW.dot(diffW);
+      sum_diff2_W_X += diffW.x() * diffW.x();
+      sum_diff2_W_Y += diffW.y() * diffW.y();
+      sum_diff2_W_Z += diffW.z() * diffW.z();
+    }
     sum_diff2_W_all += diffW.dot(diffW);
+    sum_diff2_W_X_all += diffW.x() * diffW.x();
+    sum_diff2_W_Y_all += diffW.y() * diffW.y();
+    sum_diff2_W_Z_all += diffW.z() * diffW.z();
 
     // Get projection of all ptW for the poses
     for (size_t j = 0; j < true_poses.size(); ++j) 
@@ -716,6 +744,13 @@ int main(int argc, const char* argv[]) {
   
   cout << endl <<  "Point error after optimization (inliers only) 3D world points: "
       << sqrt(sum_diff2_W / inliers.size()) << endl;
+  cout << "Point error after optimization (inliers only) 3D world points X: "
+      << sqrt(sum_diff2_W_X / inliers.size()) << endl;
+  cout << "Point error after optimization (inliers only) 3D world points Y: "
+      << sqrt(sum_diff2_W_Y / inliers.size()) << endl;
+  cout << "Point error after optimization (inliers only) 3D world points Z: "
+      << sqrt(sum_diff2_W_Z / inliers.size()) << endl;
+
   // cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_gt): "
   //     << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
   cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_meas): "
@@ -723,7 +758,14 @@ int main(int argc, const char* argv[]) {
       << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
 
   cout << endl <<  "Point error after optimization (all points) 3D world points: "
-      << sqrt(sum_diff2_W / true_points.size()) << endl;
+      << sqrt(sum_diff2_W_all / true_points.size()) << endl;
+  cout << "Point error after optimization (all points) 3D world points X: "
+      << sqrt(sum_diff2_W_X_all / true_points.size()) << endl;
+  cout << "Point error after optimization (all points) 3D world points Y: "
+      << sqrt(sum_diff2_W_Y_all / true_points.size()) << endl;
+  cout << "Point error after optimization (all points) 3D world points Z: "
+      << sqrt(sum_diff2_W_Z_all / true_points.size()) << endl;
+
   cout << "Point error after optimization (all points) 2D image points (w.r.t ptI_meas): "
       << sqrt(sum_diff2_I_meas / ((int)true_points.size() * iNumPolygonsToConsider)) 
       << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
