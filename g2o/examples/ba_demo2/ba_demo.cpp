@@ -31,6 +31,8 @@
 #include <unordered_set>
 #include <thread>
 #include <random>
+#include <iostream>
+#include <fstream>
 using namespace std;
 
 #include "g2o/core/optimization_algorithm_factory.h"
@@ -79,6 +81,7 @@ int main(int argc, const char* argv[]) {
             "initializations (0 or 1; default: 0==false)"
         << endl;
     cout << "DENSE: Use dense solver (0 or 1; default: 0==false)" << endl;
+    cout << "STARTPOLYGONIDX: (0 to i < (# of polygons - # of polygons to consider) default: 0==first polygon)" << endl;
     cout << endl;
     cout << "Note, if OUTLIER_RATIO is above 0, ROBUST_KERNEL should be set to "
             "1==true."
@@ -106,6 +109,11 @@ int main(int argc, const char* argv[]) {
   bool DENSE = false;
   if (argc > 5) {
         DENSE = atoi(argv[5]) != 0;
+  }
+
+  int STARTPOLYGONIDX = 0;
+  if (argc > 6) {
+    STARTPOLYGONIDX = atoi(argv[6]);
   }
 
   cout << "PIXEL_NOISE: " << PIXEL_NOISE << endl;
@@ -155,12 +163,12 @@ int main(int argc, const char* argv[]) {
   int iMaxNumPolygonsToConsider = 0; // Consider all of them
   pDataReader->setFileGeneratedPts2d3dInFlow(YML_GENERATED_PTS2D3D_FLOW, vvPolygonsInFlow, iMaxNumPolygonsToConsider, bDebug);
 
-  int iStartPolygonIdx = 0;
-  // int iStartPolygonIdx = 28;  // The last one that have a huge outlier
+  int iStartPolygonIdx = STARTPOLYGONIDX;
 
   Mat matInitParams, matOptParams;
   tsProblemConfig problemConfig;
-  pDataReader->setParameters(YML_PARAMETERS_LEVMAR, problemConfig, matInitParams, matOptParams, iStartPolygonIdx, true);
+  if (bUseInitParamsFromLevmarOpt)
+    pDataReader->setParameters(YML_PARAMETERS_LEVMAR, problemConfig, matInitParams, matOptParams, iStartPolygonIdx, true);
 
   // Get 3D points for the first polygon, considered as the true points
   vector<Vector3d> true_points;
@@ -741,38 +749,59 @@ int main(int argc, const char* argv[]) {
     }
     ++point_num;
   }
-  
-  cout << endl <<  "Point error after optimization (inliers only) 3D world points: "
-      << sqrt(sum_diff2_W / inliers.size()) << endl;
-  cout << "Point error after optimization (inliers only) 3D world points X: "
-      << sqrt(sum_diff2_W_X / inliers.size()) << endl;
-  cout << "Point error after optimization (inliers only) 3D world points Y: "
-      << sqrt(sum_diff2_W_Y / inliers.size()) << endl;
-  cout << "Point error after optimization (inliers only) 3D world points Z: "
-      << sqrt(sum_diff2_W_Z / inliers.size()) << endl;
 
-  // cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_gt): "
-  //     << sqrt(sum_diff2_I_gt / ((int)inliers.size() * iNumPolygonsToConsider)) << endl;
+  ofstream ofs;
+  string sFile = "g2o-result.txt";
+  ofs.open (sFile, ofstream::app);
+  if(!ofs.is_open()) 
+  {
+    cerr << "Unable to open file for append - " << sFile << endl;
+  }
+  // ofs << "PIXEL_NOISE(px)\tOUTLIER_RATIO\tHUBER\tSTRUCTURE_ONLY\tDENSE\t";
+  // ofs << "STARTPOLYGONIDX\tRMSE(m)\tRMSE_X(m)\tRMSE_Y(m)\tRMSE_Z(m)\tRMSE(px))\t";
+  // ofs << "iNumIterations\tiNumInliers\tdOptTime(ms)\n";
+  ofs << PIXEL_NOISE << "\t" << OUTLIER_RATIO << "\t" << ROBUST_KERNEL << "\t" << STRUCTURE_ONLY << "\t" << DENSE << "\t"; 
+
+  double RMSE_W, RMSE_W_X, RMSE_W_Y, RMSE_W_Z, RMSE_PX;
+  RMSE_W = RMSE_W_X = RMSE_W_Y = RMSE_W_Z = RMSE_PX = 0.0;
+  RMSE_W = sqrt(sum_diff2_W / inliers.size());
+  RMSE_W_X = sqrt(sum_diff2_W_X / inliers.size());
+  RMSE_W_Y = sqrt(sum_diff2_W_Y / inliers.size());
+  RMSE_W_Z = sqrt(sum_diff2_W_Z / inliers.size());
+  RMSE_PX = sqrt(sum_diff2_I_meas / ((int)inliers.size() * iNumPolygonsToConsider));
+
+  cout << endl <<  "Point error after optimization (inliers only) 3D world points: " << RMSE_W  << endl;
+  cout << "Point error after optimization (inliers only) 3D world points X: " << RMSE_W_X << endl;
+  cout << "Point error after optimization (inliers only) 3D world points X: " << RMSE_W_Y << endl;
+  cout << "Point error after optimization (inliers only) 3D world points X: " << RMSE_W_Z << endl;
   cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_meas): "
-      << sqrt(sum_diff2_I_meas / ((int)inliers.size() * iNumPolygonsToConsider)) 
-      << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
+      << RMSE_PX << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
 
-  cout << endl <<  "Point error after optimization (all points) 3D world points: "
-      << sqrt(sum_diff2_W_all / true_points.size()) << endl;
-  cout << "Point error after optimization (all points) 3D world points X: "
-      << sqrt(sum_diff2_W_X_all / true_points.size()) << endl;
-  cout << "Point error after optimization (all points) 3D world points Y: "
-      << sqrt(sum_diff2_W_Y_all / true_points.size()) << endl;
-  cout << "Point error after optimization (all points) 3D world points Z: "
-      << sqrt(sum_diff2_W_Z_all / true_points.size()) << endl;
-
+  double RMSE_W_all, RMSE_W_X_all, RMSE_W_Y_all, RMSE_W_Z_all, RMSE_PX_all;
+  RMSE_W_all = RMSE_W_X_all = RMSE_W_Y_all = RMSE_W_Z_all = RMSE_PX_all = 0.0;
+  RMSE_W_all = sqrt(sum_diff2_W_all / true_points.size());
+  RMSE_W_X_all = sqrt(sum_diff2_W_X_all / true_points.size());
+  RMSE_W_Y_all = sqrt(sum_diff2_W_Y_all / true_points.size());
+  RMSE_W_Z_all = sqrt(sum_diff2_W_Z_all / true_points.size());
+  RMSE_PX_all = sqrt(sum_diff2_I_meas / ((int)true_points.size() * iNumPolygonsToConsider));
+  cout << endl <<  "Point error after optimization (all points) 3D world points: " << RMSE_W_all  << endl;
+  cout << "Point error after optimization (all points) 3D world points X: " << RMSE_W_X_all << endl;
+  cout << "Point error after optimization (all points) 3D world points X: " << RMSE_W_Y_all << endl;
+  cout << "Point error after optimization (all points) 3D world points X: " << RMSE_W_Z_all << endl;
   cout << "Point error after optimization (all points) 2D image points (w.r.t ptI_meas): "
-      << sqrt(sum_diff2_I_meas / ((int)true_points.size() * iNumPolygonsToConsider)) 
-      << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
+      << RMSE_PX_all << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
   cout << endl;
 
-  cout << "# of inliers: " << (int)inliers.size() << endl;
-  cout << "optimization time: " <<dTimeNs / 1e6 << " ms" << endl;
+  int iNumInliers = (int)inliers.size();
+  double dOptimizationTime = dTimeNs / 1e6;
+  cout << "# of inliers: " << iNumInliers << endl;
+  cout << "optimization time: " << dOptimizationTime << " ms" << endl;
+
+  ofs << STARTPOLYGONIDX << "\t" 
+      << RMSE_W_all << "\t"  << RMSE_W_X_all << "\t" << RMSE_W_Y_all << "\t" << RMSE_W_Z_all << "\t"
+      << RMSE_PX_all << "\t" << iNumIterations << "\t" << iNumInliers << "\t" << dOptimizationTime << "\t";
+  ofs << "\n";
+  if(ofs.is_open()) ofs.close();
 
   if(false)
   {
