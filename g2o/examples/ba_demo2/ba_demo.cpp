@@ -317,8 +317,8 @@ int main(int argc, const char* argv[]) {
       if(bEnableSE2constrainedSE3poses){
         //cout << "pose: " << pose << endl;
         //cout << "toSE3Quat(matPose_new): " <<  toSE3Quat(matPose_new) << endl;
-        //addPlaneMotionSE3Expmap(optimizer, toSE3Quat(matPose_new), vertex_id, matT_CwrtW_init_fixed);
-        addPlaneMotionSE3Expmap2(optimizer, toSE3Quat(matPose_new), vertex_id, bTc);
+        addPlaneMotionSE3Expmap(optimizer, toSE3Quat(matPose_new), vertex_id, matT_CwrtW_init_fixed);
+        //addPlaneMotionSE3Expmap2(optimizer, toSE3Quat(matPose_new), vertex_id, bTc);
       } 
 
       vertex_id++;
@@ -772,8 +772,8 @@ int main(int argc, const char* argv[]) {
 
   cout << endl <<  "Point error after optimization (inliers only) 3D world points: " << RMSE_W  << endl;
   cout << "Point error after optimization (inliers only) 3D world points X: " << RMSE_W_X << endl;
-  cout << "Point error after optimization (inliers only) 3D world points X: " << RMSE_W_Y << endl;
-  cout << "Point error after optimization (inliers only) 3D world points X: " << RMSE_W_Z << endl;
+  cout << "Point error after optimization (inliers only) 3D world points Y: " << RMSE_W_Y << endl;
+  cout << "Point error after optimization (inliers only) 3D world points Z: " << RMSE_W_Z << endl;
   cout << "Point error after optimization (inliers only) 2D image points (w.r.t ptI_meas): "
       << RMSE_PX << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
 
@@ -786,8 +786,8 @@ int main(int argc, const char* argv[]) {
   RMSE_PX_all = sqrt(sum_diff2_I_meas / ((int)true_points.size() * iNumPolygonsToConsider));
   cout << endl <<  "Point error after optimization (all points) 3D world points: " << RMSE_W_all  << endl;
   cout << "Point error after optimization (all points) 3D world points X: " << RMSE_W_X_all << endl;
-  cout << "Point error after optimization (all points) 3D world points X: " << RMSE_W_Y_all << endl;
-  cout << "Point error after optimization (all points) 3D world points X: " << RMSE_W_Z_all << endl;
+  cout << "Point error after optimization (all points) 3D world points Y: " << RMSE_W_Y_all << endl;
+  cout << "Point error after optimization (all points) 3D world points Z: " << RMSE_W_Z_all << endl;
   cout << "Point error after optimization (all points) 2D image points (w.r.t ptI_meas): "
       << RMSE_PX_all << " PIXEL_NOISE: " << PIXEL_NOISE << " px" << endl;
   cout << endl;

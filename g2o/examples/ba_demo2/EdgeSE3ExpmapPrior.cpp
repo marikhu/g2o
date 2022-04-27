@@ -274,6 +274,10 @@ addPlaneMotionSE3Expmap2(g2o::SparseOptimizer &opt, const g2o::SE3Quat &pose, in
     Info_bw(5,5) = 1;       // tz
     Matrix6d J_bb_cc = toSE3Quat(bTc).adj();
     Matrix6d Info_cw = J_bb_cc.transpose() * Info_bw * J_bb_cc;
+    std::cout << "bTc: " << std::endl << bTc << std::endl;
+    std::cout << "Info_bw: " << std::endl << Info_bw << std::endl;
+    std::cout << "J_bb_cc: " << std::endl << J_bb_cc << std::endl;
+    std::cout << "Info_cw: " << std::endl << Info_cw << std::endl;
 
     // TODO: Can we define a virtual camera for which we can specify covariance matrix,
     // The virtual camera has to be orientated with its principal axis parallel to the road
